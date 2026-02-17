@@ -1,0 +1,17 @@
+name: iNotes
+options:
+  bundleIdPrefix: com.vamsi
+  deploymentTarget:
+    macOS: "14.0"
+targets:
+  iNotes:
+    type: application
+    platform: macOS
+    sources:
+      - iNotes
+    settings:
+      base:
+        INFOPLIST_FILE: iNotes/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.vamsi.inotes
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
