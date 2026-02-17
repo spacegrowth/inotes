@@ -26,7 +26,7 @@ A minimal macOS menu bar scratchpad. 3 notes, auto-save, keyboard shortcut.
 ### Build from source
 ```bash
 brew install xcodegen
-git clone https://github.com/YOUR_USERNAME/inotes.git
+git clone https://github.com/spacegrowth/inotes.git
 cd inotes
 xcodegen generate
 xcodebuild -scheme iNotes -configuration Release -destination 'platform=macOS' build
