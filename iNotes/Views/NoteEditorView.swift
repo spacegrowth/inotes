@@ -9,15 +9,17 @@ struct NoteEditorView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = NSTextView.scrollableTextView()
         scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
 
-        let textView = NSTextView()
+        let textView = scrollView.documentView as! NSTextView
         textView.isRichText = false
         textView.font = NSFont.systemFont(ofSize: 13)
+        textView.textColor = .black
+        textView.insertionPointColor = .black
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
@@ -25,22 +27,14 @@ struct NoteEditorView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.textColor = .textColor
-        textView.insertionPointColor = .textColor
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
         textView.delegate = context.coordinator
         textView.string = content
 
-        scrollView.documentView = textView
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        textView.textColor = .textColor
-        textView.insertionPointColor = .textColor
         if textView.string != content {
             let selectedRanges = textView.selectedRanges
             textView.string = content
