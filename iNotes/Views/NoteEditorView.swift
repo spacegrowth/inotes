@@ -21,12 +21,13 @@ struct NoteEditorView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
-        textView.drawsBackground = false
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.textColor = .labelColor
-        textView.insertionPointColor = .labelColor
+        textView.textColor = .textColor
+        textView.insertionPointColor = .textColor
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
@@ -39,8 +40,8 @@ struct NoteEditorView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        textView.textColor = .labelColor
-        textView.insertionPointColor = .labelColor
+        textView.textColor = .textColor
+        textView.insertionPointColor = .textColor
         if textView.string != content {
             let selectedRanges = textView.selectedRanges
             textView.string = content
