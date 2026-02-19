@@ -54,6 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSApp.effectiveAppearance
         panel.level = .statusBar
         panel.hasShadow = true
         panel.isMovableByWindowBackground = false
@@ -195,6 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             stopClickMonitor()
         } else {
             positionPanel()
+            panel.appearance = NSApp.effectiveAppearance
             panel.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             focusEditor()
