@@ -5,6 +5,9 @@ import Combine
 class NotesStore: ObservableObject {
     @Published var notes: [Note]
     @Published var selectedIndex: Int = 0
+    @Published var showToolbar: Bool {
+        didSet { UserDefaults.standard.set(showToolbar, forKey: "showToolbar") }
+    }
 
     private let saveURL: URL
     private var saveCancellable: AnyCancellable?
@@ -14,6 +17,8 @@ class NotesStore: ObservableObject {
         let dir = appSupport.appendingPathComponent("iNotes", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.saveURL = dir.appendingPathComponent("notes.json")
+
+        self.showToolbar = UserDefaults.standard.object(forKey: "showToolbar") as? Bool ?? true
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -40,8 +45,8 @@ class NotesStore: ObservableObject {
         }
     }
 
-    func updateContent(at index: Int, content: String) {
-        notes[index].content = content
+    func updateRTFData(at index: Int, data: Data) {
+        notes[index].rtfData = data
         notes[index].lastModified = .now
     }
 }
