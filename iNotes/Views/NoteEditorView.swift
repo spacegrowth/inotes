@@ -1,6 +1,12 @@
 import SwiftUI
 import AppKit
 
+/// Posted (synchronously) when the app is about to terminate so the editor
+/// Coordinator can flush its pending debounced RTF encode before `store.save()`.
+extension Notification.Name {
+    static let iNotesFlushPendingEncode = Notification.Name("iNotesFlushPendingEncode")
+}
+
 // Default font helper
 func defaultFont(size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSFont {
     NSFont(name: "Menlo-Regular", size: size)
@@ -15,38 +21,6 @@ func defaultBoldFont(size: CGFloat = 13) -> NSFont {
 
 class RichNoteTextView: NSTextView {
     weak var editorState: EditorState?
-
-    // Bullet prefixes for each nesting level (max 3)
-    static let bulletLevels: [(prefix: String, marker: String)] = [
-        ("", "•"),          // Level 1: •
-        ("    ", "◦"),      // Level 2:     ◦
-        ("        ", "▪"),  // Level 3:         ▪
-    ]
-
-    /// Returns the bullet level (1-3) for a paragraph, or 0 if not a bullet line
-    private func bulletLevel(of paraText: String) -> Int {
-        for (i, level) in Self.bulletLevels.enumerated().reversed() {
-            let fullPrefix = level.prefix + level.marker
-            if paraText.hasPrefix(fullPrefix) {
-                return i + 1
-            }
-        }
-        return 0
-    }
-
-    /// Returns the full prefix string (indent + marker + space) for a given level (1-based)
-    private func bulletPrefix(for level: Int) -> String {
-        guard level >= 1 && level <= Self.bulletLevels.count else { return "" }
-        let b = Self.bulletLevels[level - 1]
-        return b.prefix + b.marker + " "
-    }
-
-    /// Returns the length of the bullet prefix in the paragraph text
-    private func bulletPrefixLength(of paraText: String, level: Int) -> Int {
-        guard level >= 1 && level <= Self.bulletLevels.count else { return 0 }
-        let b = Self.bulletLevels[level - 1]
-        return b.prefix.count + b.marker.utf16.count + 1 // +1 for space
-    }
 
     // MARK: - Cursor rects for checkboxes
 
@@ -65,7 +39,7 @@ class RichNoteTextView: NSTextView {
             let paraRange = string.paragraphRange(for: NSRange(location: searchRange.location, length: 0))
             let paraText = string.substring(with: paraRange)
 
-            if paraText.hasPrefix("☐ ") || paraText.hasPrefix("☑ ") {
+            if TextEditorLogic.isTodoParagraph(paraText) {
                 // Get the glyph rect for the checkbox character
                 let cbRange = NSRange(location: paraRange.location, length: 1)
                 let glyphRange = layoutManager.glyphRange(forCharacterRange: cbRange, actualCharacterRange: nil)
@@ -136,7 +110,7 @@ class RichNoteTextView: NSTextView {
             let paraRange = string.paragraphRange(for: NSRange(location: charIndex, length: 0))
             let paraText = string.substring(with: paraRange)
 
-            if (paraText.hasPrefix("☐ ") || paraText.hasPrefix("☑ ")) {
+            if TextEditorLogic.isTodoParagraph(paraText) {
                 let clickOffsetInPara = charIndex - paraRange.location
                 if clickOffsetInPara <= 1 {
                     editorState?.toggleCheckboxAt(paraRange.location)
@@ -157,7 +131,7 @@ class RichNoteTextView: NSTextView {
         let paraText = string.substring(with: paraRange)
 
         // Handle todo lines
-        if paraText.hasPrefix("☐ ") || paraText.hasPrefix("☑ ") {
+        if TextEditorLogic.isTodoParagraph(paraText) {
             let content = paraText.replacingOccurrences(of: "\n", with: "")
             if content == "☐" || content == "☐ " {
                 let removeRange = NSRange(location: paraRange.location, length: min(2, paraRange.length))
@@ -192,13 +166,13 @@ class RichNoteTextView: NSTextView {
             return
         }
 
-        let level = bulletLevel(of: paraText)
+        let level = TextEditorLogic.bulletLevel(of: paraText)
 
         if level > 0 {
-            let prefix = bulletPrefix(for: level)
+            let prefix = TextEditorLogic.bulletPrefix(for: level)
             let content = paraText.replacingOccurrences(of: "\n", with: "")
             if content == String(prefix.dropLast()) || content == prefix {
-                let prefixLen = bulletPrefixLength(of: paraText, level: level)
+                let prefixLen = TextEditorLogic.bulletPrefixLength(of: paraText, level: level)
                 let removeRange = NSRange(location: paraRange.location, length: min(prefixLen, paraRange.length))
                 if shouldChangeText(in: removeRange, replacementString: "") {
                     textStorage?.replaceCharacters(in: removeRange, with: "")
@@ -221,11 +195,11 @@ class RichNoteTextView: NSTextView {
         let cursorLocation = selectedRange().location
         let paraRange = string.paragraphRange(for: NSRange(location: cursorLocation, length: 0))
         let paraText = string.substring(with: paraRange)
-        let level = bulletLevel(of: paraText)
+        let level = TextEditorLogic.bulletLevel(of: paraText)
 
-        if level > 0 && level < Self.bulletLevels.count {
-            let oldPrefixLen = bulletPrefixLength(of: paraText, level: level)
-            let newPrefix = bulletPrefix(for: level + 1)
+        if level > 0 && level < TextEditorLogic.bulletLevels.count {
+            let oldPrefixLen = TextEditorLogic.bulletPrefixLength(of: paraText, level: level)
+            let newPrefix = TextEditorLogic.bulletPrefix(for: level + 1)
             let replaceRange = NSRange(location: paraRange.location, length: oldPrefixLen)
             if shouldChangeText(in: replaceRange, replacementString: newPrefix) {
                 textStorage?.replaceCharacters(in: replaceRange, with: newPrefix)
@@ -244,11 +218,11 @@ class RichNoteTextView: NSTextView {
         let cursorLocation = selectedRange().location
         let paraRange = string.paragraphRange(for: NSRange(location: cursorLocation, length: 0))
         let paraText = string.substring(with: paraRange)
-        let level = bulletLevel(of: paraText)
+        let level = TextEditorLogic.bulletLevel(of: paraText)
 
         if level > 1 {
-            let oldPrefixLen = bulletPrefixLength(of: paraText, level: level)
-            let newPrefix = bulletPrefix(for: level - 1)
+            let oldPrefixLen = TextEditorLogic.bulletPrefixLength(of: paraText, level: level)
+            let newPrefix = TextEditorLogic.bulletPrefix(for: level - 1)
             let replaceRange = NSRange(location: paraRange.location, length: oldPrefixLen)
             if shouldChangeText(in: replaceRange, replacementString: newPrefix) {
                 textStorage?.replaceCharacters(in: replaceRange, with: newPrefix)
@@ -274,7 +248,7 @@ class RichNoteTextView: NSTextView {
         let paraRange = fullString.paragraphRange(for: NSRange(location: cursorLocation, length: 0))
         let paraText = fullString.substring(with: paraRange)
 
-        if paraText.hasPrefix("- ") {
+        if TextEditorLogic.shouldConvertDashToBullet(paraText) {
             let dashRange = NSRange(location: paraRange.location, length: 2)
             if shouldChangeText(in: dashRange, replacementString: "• ") {
                 textStorage?.replaceCharacters(in: dashRange, with: "• ")
@@ -325,6 +299,7 @@ struct NoteEditorView: NSViewRepresentable {
 
         loadRTFData(into: textView)
         context.coordinator.currentNoteID = noteID
+        context.coordinator.activeBinding = _rtfData
         editorState.textView = textView
 
         return scrollView
@@ -334,6 +309,11 @@ struct NoteEditorView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? RichNoteTextView else { return }
 
         if context.coordinator.currentNoteID != noteID {
+            // Switching notes: flush any pending RTF encode for the OUTGOING note
+            // (through its pinned binding) before rebinding, so the last few
+            // keystrokes are never lost.
+            context.coordinator.flushPendingEncode(deferWrite: true)
+            context.coordinator.activeBinding = _rtfData
             context.coordinator.currentNoteID = noteID
             context.coordinator.isUpdating = true
             loadRTFData(into: textView)
@@ -366,19 +346,80 @@ struct NoteEditorView: NSViewRepresentable {
         var currentNoteID: UUID?
         var isUpdating = false
 
+        /// Binding for the note that is currently loaded, pinned to that note's
+        /// index (see `ContentView`). The debounced encode writes through this so
+        /// a flush triggered after a note switch still targets the right note.
+        var activeBinding: Binding<Data>?
+
+        /// Coalesces the (expensive) full-document RTF serialization so it runs
+        /// once after the user pauses, instead of on every keystroke.
+        private var encodeTimer: Timer?
+        private weak var pendingTextView: NSTextView?
+        private let encodeDelay: TimeInterval = 0.3
+
         init(_ parent: NoteEditorView) {
             self.parent = parent
+            super.init()
+            // App termination: flush the pending encode synchronously so the
+            // last <0.3s of typing is captured before `store.save()`.
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(flushOnTerminate),
+                name: .iNotesFlushPendingEncode,
+                object: nil
+            )
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+            // View teardown: persist any pending edit so nothing is lost.
+            flushPendingEncode()
+        }
+
+        /// Notification entry point for the terminate flush. Runs synchronously
+        /// on the posting (main) thread, so the binding write completes before
+        /// `applicationWillTerminate` calls `store.save()`.
+        @objc private func flushOnTerminate() {
+            flushPendingEncode()
         }
 
         func textDidChange(_ notification: Notification) {
             guard !isUpdating,
-                  let textView = notification.object as? NSTextView,
+                  let textView = notification.object as? NSTextView else { return }
+
+            // On-screen text is already updated by NSTextView; only the RTF
+            // re-encode is debounced.
+            pendingTextView = textView
+            encodeTimer?.invalidate()
+            encodeTimer = Timer.scheduledTimer(withTimeInterval: encodeDelay, repeats: false) { [weak self] _ in
+                self?.flushPendingEncode()
+            }
+        }
+
+        /// Serialize the pending text view to RTF and write it through the
+        /// pinned `activeBinding`. Safe to call repeatedly; no-ops when nothing
+        /// is pending.
+        ///
+        /// When called from inside SwiftUI's view-update pass (the note-switch in
+        /// `updateNSView`), pass `deferWrite: true` so the `@Published` mutation
+        /// is moved off the current update cycle. The outgoing binding is
+        /// captured first, so the deferred write still targets the correct note
+        /// even though `activeBinding` is reassigned right after.
+        func flushPendingEncode(deferWrite: Bool = false) {
+            encodeTimer?.invalidate()
+            encodeTimer = nil
+            guard let textView = pendingTextView,
                   let textStorage = textView.textStorage else { return }
+            pendingTextView = nil
 
             let range = NSRange(location: 0, length: textStorage.length)
-            if let data = try? textStorage.data(from: range,
-                                                 documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) {
-                parent.rtfData = data
+            guard let data = try? textStorage.data(from: range,
+                                                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) else { return }
+            let binding = activeBinding
+            if deferWrite {
+                DispatchQueue.main.async { binding?.wrappedValue = data }
+            } else {
+                binding?.wrappedValue = data
             }
         }
 

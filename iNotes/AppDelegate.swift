@@ -74,6 +74,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Synchronously flush the editor's pending debounced RTF encode so the
+        // last <0.3s of typing is written into the store before we persist.
+        NotificationCenter.default.post(name: .iNotesFlushPendingEncode, object: nil)
         store.save()
         unregisterHotKey()
     }

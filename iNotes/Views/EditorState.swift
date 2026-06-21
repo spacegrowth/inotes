@@ -78,10 +78,7 @@ class EditorState: ObservableObject {
     }
 
     private func headingLevel(for size: CGFloat) -> HeadingLevel {
-        if size >= 20 { return .h1 }
-        if size >= 16 { return .h2 }
-        if size >= 14.5 { return .h3 }
-        return .body
+        HeadingLevel(rawValue: TextEditorLogic.headingLevel(forFontSize: size)) ?? .body
     }
 
     private func checkBulletListAtCursor() -> Bool {
@@ -90,7 +87,7 @@ class EditorState: ObservableObject {
         let string = textStorage.string as NSString
         let paraRange = string.paragraphRange(for: textView.selectedRange())
         let paraText = string.substring(with: paraRange)
-        return paraText.hasPrefix("• ") || paraText.hasPrefix("    ◦ ") || paraText.hasPrefix("        ▪ ")
+        return TextEditorLogic.isBulletParagraph(paraText)
     }
 
     private func checkTodoAtCursor() -> Bool {
@@ -99,7 +96,7 @@ class EditorState: ObservableObject {
         let string = textStorage.string as NSString
         let paraRange = string.paragraphRange(for: textView.selectedRange())
         let paraText = string.substring(with: paraRange)
-        return paraText.hasPrefix("☐ ") || paraText.hasPrefix("☑ ")
+        return TextEditorLogic.isTodoParagraph(paraText)
     }
 
     // MARK: - Formatting Actions
@@ -195,34 +192,13 @@ class EditorState: ObservableObject {
         undoManager?.beginUndoGrouping()
 
         if isBulletList {
-            let lines = paragraphText.components(separatedBy: "\n")
-            var newText = ""
-            for (i, line) in lines.enumerated() {
-                var cleaned = line
-                for level in ["        ▪ ", "    ◦ ", "• "] {
-                    if cleaned.hasPrefix(level) {
-                        cleaned = String(cleaned.dropFirst(level.count))
-                        break
-                    }
-                }
-                newText += cleaned
-                if i < lines.count - 1 { newText += "\n" }
-            }
+            let newText = TextEditorLogic.removeBulletPrefix(fromMultilineText: paragraphText)
             if textView.shouldChangeText(in: range, replacementString: newText) {
                 textStorage.replaceCharacters(in: range, with: newText)
                 textView.didChangeText()
             }
         } else {
-            let lines = paragraphText.components(separatedBy: "\n")
-            var newText = ""
-            for (i, line) in lines.enumerated() {
-                if !line.isEmpty {
-                    newText += "• " + line
-                } else {
-                    newText += line
-                }
-                if i < lines.count - 1 { newText += "\n" }
-            }
+            let newText = TextEditorLogic.addBulletPrefix(toMultilineText: paragraphText)
             if textView.shouldChangeText(in: range, replacementString: newText) {
                 textStorage.replaceCharacters(in: range, with: newText)
                 textView.didChangeText()
@@ -245,16 +221,7 @@ class EditorState: ObservableObject {
 
         if isTodoItem {
             // Remove todo prefix from each line
-            let lines = paragraphText.components(separatedBy: "\n")
-            var newText = ""
-            for (i, line) in lines.enumerated() {
-                var cleaned = line
-                if cleaned.hasPrefix("☐ ") || cleaned.hasPrefix("☑ ") {
-                    cleaned = String(cleaned.dropFirst(2))
-                }
-                newText += cleaned
-                if i < lines.count - 1 { newText += "\n" }
-            }
+            let newText = TextEditorLogic.removeTodoPrefix(fromMultilineText: paragraphText)
             if textView.shouldChangeText(in: range, replacementString: newText) {
                 textStorage.replaceCharacters(in: range, with: newText)
                 let newRange = NSRange(location: range.location, length: (newText as NSString).length)
@@ -264,17 +231,7 @@ class EditorState: ObservableObject {
             }
         } else {
             // Add todo prefix to each line with larger checkbox font
-            let lines = paragraphText.components(separatedBy: "\n")
-            // Do plain text replacement
-            var newText = ""
-            for (i, line) in lines.enumerated() {
-                if !line.isEmpty {
-                    newText += "☐ " + line
-                } else {
-                    newText += line
-                }
-                if i < lines.count - 1 { newText += "\n" }
-            }
+            let newText = TextEditorLogic.addTodoPrefix(toMultilineText: paragraphText)
             if textView.shouldChangeText(in: range, replacementString: newText) {
                 textStorage.replaceCharacters(in: range, with: newText)
                 // Now apply larger font to each checkbox character

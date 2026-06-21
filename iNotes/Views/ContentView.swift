@@ -26,14 +26,22 @@ struct ContentView: View {
                 Divider()
             }
             NoteEditorView(
-                rtfData: Binding(
-                    get: { store.notes[store.selectedIndex].rtfData },
-                    set: { store.updateRTFData(at: store.selectedIndex, data: $0) }
-                ),
+                rtfData: rtfBinding(at: store.selectedIndex),
                 noteID: store.notes[store.selectedIndex].id,
                 editorState: editorState
             )
         }
         .background(.background)
+    }
+
+    /// Binding pinned to a specific note index. Capturing `index` (rather than
+    /// reading `store.selectedIndex` live) keeps the binding pointed at the same
+    /// note even after the selection changes, so the editor's debounced RTF
+    /// flush still writes the outgoing note's edits to the outgoing note.
+    private func rtfBinding(at index: Int) -> Binding<Data> {
+        Binding(
+            get: { store.notes[index].rtfData },
+            set: { store.updateRTFData(at: index, data: $0) }
+        )
     }
 }

@@ -62,3 +62,50 @@ struct Note: Identifiable, Codable {
         try container.encode(lastModified, forKey: .lastModified)
     }
 }
+
+// MARK: - Date strategy (sub-second precision + backward compatibility)
+
+extension Note {
+    /// ISO 8601 with fractional seconds — used for writing and read first on load.
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// ISO 8601 whole-second formatter — fallback so files written by the old
+    /// `.iso8601` strategy (no fractional seconds) still decode.
+    private static let iso8601WholeSecond: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    /// Encoder that preserves sub-second `lastModified` precision.
+    static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(iso8601Fractional.string(from: date))
+        }
+        return encoder
+    }
+
+    /// Decoder that reads fractional-second timestamps and still accepts the
+    /// legacy whole-second ISO 8601 strings from older saved files.
+    static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = iso8601Fractional.date(from: string)
+                ?? iso8601WholeSecond.date(from: string) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO 8601 date: \(string)")
+        }
+        return decoder
+    }
+}
