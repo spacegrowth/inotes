@@ -172,21 +172,50 @@ final class NoteModelTests: XCTestCase {
     }
 
     @MainActor
-    func testStore_decode_nonThreeCounts_normalizesWithoutDataLoss() throws {
-        for count in [0, 1, 2, 4, 5] {
+    func testStore_decode_nonEmptyCounts_normalizesWithoutDataLoss() throws {
+        for count in [1, 2, 3, 4, 5] {
             let original = (0..<count).map { Note(title: "N\($0)", text: "body \($0)") }
             let data = try makeEncoder().encode(original)
             let decoded = try makeDecoder().decode([Note].self, from: data)
             XCTAssertEqual(decoded.count, count)
 
             let normalized = NotesStore.normalize(decoded)
-            XCTAssertEqual(normalized.count, max(count, 3),
-                           "normalize pads up to 3 but never trims content")
+            XCTAssertEqual(normalized.count, count,
+                           "normalize never pads or trims a non-empty decoded file")
             for note in original {
                 let survivor = normalized.first { $0.id == note.id }
                 XCTAssertNotNil(survivor, "note \(note.title) must be preserved")
                 XCTAssertEqual(survivor?.text, note.text)
             }
         }
+    }
+
+    @MainActor
+    func testStore_decode_emptyFile_normalizesToOneFreshNote() throws {
+        let normalized = NotesStore.normalize([])
+        XCTAssertEqual(normalized.count, 1, "an empty/new file must still yield at least one note")
+    }
+
+    // MARK: - isPinned migration
+
+    func testNote_oldFileWithoutIsPinned_decodesAsUnpinned() throws {
+        let id = UUID()
+        let json = """
+        {
+          "id": "\(id.uuidString)",
+          "title": "Old",
+          "text": "hello",
+          "lastModified": "2001-09-09T01:46:40Z"
+        }
+        """.data(using: .utf8)!
+        let decoded = try makeDecoder().decode(Note.self, from: json)
+        XCTAssertFalse(decoded.isPinned, "notes.json files predating pinning must default to unpinned")
+    }
+
+    func testNote_isPinned_roundTrips() throws {
+        let note = Note(title: "t", text: "x", isPinned: true)
+        let data = try makeEncoder().encode(note)
+        let decoded = try makeDecoder().decode(Note.self, from: data)
+        XCTAssertTrue(decoded.isPinned)
     }
 }

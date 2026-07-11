@@ -7,7 +7,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                TabBarView(selectedIndex: $store.selectedIndex, notes: $store.notes)
+                TabBarView(store: store)
                 Button {
                     store.showToolbar.toggle()
                 } label: {

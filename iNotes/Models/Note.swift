@@ -9,18 +9,20 @@ struct Note: Identifiable, Codable {
     var title: String
     var text: String
     var lastModified: Date
+    var isPinned: Bool
 
-    init(id: UUID = UUID(), title: String = "", text: String = "", lastModified: Date = .now) {
+    init(id: UUID = UUID(), title: String = "", text: String = "", lastModified: Date = .now, isPinned: Bool = false) {
         self.id = id
         self.title = title
         self.text = text
         self.lastModified = lastModified
+        self.isPinned = isPinned
     }
 
     enum CodingKeys: String, CodingKey {
         // `text` is the current format; `rtfData` / `content` are legacy inputs
         // that migrate on decode and are never re-emitted.
-        case id, title, text, rtfData, content, lastModified
+        case id, title, text, rtfData, content, lastModified, isPinned
     }
 
     init(from decoder: Decoder) throws {
@@ -28,6 +30,8 @@ struct Note: Identifiable, Codable {
         id = try container.decode(UUID.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
         lastModified = try container.decode(Date.self, forKey: .lastModified)
+        // Old files predate pinning; default to unpinned so they still load.
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
 
         if let markdown = try container.decodeIfPresent(String.self, forKey: .text) {
             // Current format: plain markdown source.
@@ -52,6 +56,7 @@ struct Note: Identifiable, Codable {
         try container.encode(title, forKey: .title)
         try container.encode(text, forKey: .text)
         try container.encode(lastModified, forKey: .lastModified)
+        try container.encode(isPinned, forKey: .isPinned)
     }
 }
 
