@@ -1,27 +1,13 @@
 import AppKit
 import SwiftUI
 
+/// Heading levels surfaced to the toolbar. In the markdown-source model these
+/// map to `#`/`##`/`###` line prefixes rather than font sizes.
 enum HeadingLevel: Int, CaseIterable {
     case body = 0
     case h1 = 1
     case h2 = 2
     case h3 = 3
-
-    var fontSize: CGFloat {
-        switch self {
-        case .body: return 13
-        case .h1: return 22
-        case .h2: return 18
-        case .h3: return 15
-        }
-    }
-
-    var fontWeight: NSFont.Weight {
-        switch self {
-        case .body: return .regular
-        case .h1, .h2, .h3: return .bold
-        }
-    }
 }
 
 @MainActor
@@ -35,338 +21,192 @@ class EditorState: ObservableObject {
     @Published var isBulletList = false
     @Published var isTodoItem = false
 
-    // Larger font for checkbox characters
-    static let checkboxFont = defaultFont(size: 18)
+    // MARK: - Selection → toolbar state
 
     func updateFromSelection() {
-        guard let textView = textView,
-              let textStorage = textView.textStorage,
-              textStorage.length > 0 else {
-            if let textView = textView {
-                let attrs = textView.typingAttributes
-                updateState(from: attrs)
-            }
+        guard let textView = textView, let ts = textView.textStorage else {
+            resetState()
+            return
+        }
+        let ns = ts.string as NSString
+        let sel = textView.selectedRange()
+
+        // Line-level markers.
+        let line = ns.length > 0
+            ? ns.substring(with: ns.paragraphRange(for: sel)).replacingOccurrences(of: "\n", with: "")
+            : ""
+        currentHeading = HeadingLevel(rawValue: TextEditorLogic.headingLevel(ofLine: line)) ?? .body
+        isTodoItem = TextEditorLogic.checkbox(ofLine: line) != nil
+        isBulletList = TextEditorLogic.bullet(ofLine: line) != nil
+
+        // Inline markers at the caret.
+        let spans = TextEditorLogic.inlineSpans(in: ns as String)
+        let loc = min(sel.location, max(0, ns.length))
+        func inSpan(_ kind: TextEditorLogic.InlineKind) -> Bool {
+            spans.contains { $0.kind == kind && NSLocationInRange(loc, $0.fullRange) }
+        }
+        isBold = inSpan(.bold)
+        isItalic = inSpan(.italic)
+        // The markdown model has no distinct underline; Cmd+U wraps `_…_`, which
+        // is styled as italic. Leave the underline indicator off.
+        isUnderlined = false
+    }
+
+    private func resetState() {
+        isBold = false; isItalic = false; isUnderlined = false
+        currentHeading = .body; isBulletList = false; isTodoItem = false
+    }
+
+    // MARK: - Inline wrap (Cmd+B / I / U)
+
+    func toggleBold() { wrap(with: "**") }
+    func toggleItalic() { wrap(with: "*") }
+    func toggleUnderline() { wrap(with: "_") }
+
+    private func wrap(with marker: String) {
+        guard let textView = textView, let ts = textView.textStorage else { return }
+        let ns = ts.string as NSString
+        let sel = textView.selectedRange()
+        let markerLen = (marker as NSString).length
+
+        // No selection: drop an empty pair and place the caret between them.
+        if sel.length == 0 {
+            let insertion = marker + marker
+            replace(sel, with: insertion, in: textView, ts,
+                    selection: NSRange(location: sel.location + markerLen, length: 0))
+            updateFromSelection()
             return
         }
 
-        let attrs: [NSAttributedString.Key: Any]
-        let selRange = textView.selectedRange()
-        if selRange.length > 0 && selRange.location < textStorage.length {
-            attrs = textStorage.attributes(at: selRange.location, effectiveRange: nil)
-        } else if selRange.location > 0 && selRange.location <= textStorage.length {
-            attrs = textStorage.attributes(at: selRange.location - 1, effectiveRange: nil)
-        } else {
-            attrs = textView.typingAttributes
-        }
-        updateState(from: attrs)
-    }
+        let selected = ns.substring(with: sel)
 
-    private func updateState(from attrs: [NSAttributedString.Key: Any]) {
-        if let font = attrs[.font] as? NSFont {
-            let traits = font.fontDescriptor.symbolicTraits
-            isBold = traits.contains(.bold)
-            isItalic = traits.contains(.italic)
-            currentHeading = headingLevel(for: font.pointSize)
-        } else {
-            isBold = false
-            isItalic = false
-            currentHeading = .body
-        }
-        isUnderlined = (attrs[.underlineStyle] as? Int ?? 0) != 0
-        isBulletList = checkBulletListAtCursor()
-        isTodoItem = checkTodoAtCursor()
-    }
-
-    private func headingLevel(for size: CGFloat) -> HeadingLevel {
-        HeadingLevel(rawValue: TextEditorLogic.headingLevel(forFontSize: size)) ?? .body
-    }
-
-    private func checkBulletListAtCursor() -> Bool {
-        guard let textView = textView,
-              let textStorage = textView.textStorage else { return false }
-        let string = textStorage.string as NSString
-        let paraRange = string.paragraphRange(for: textView.selectedRange())
-        let paraText = string.substring(with: paraRange)
-        return TextEditorLogic.isBulletParagraph(paraText)
-    }
-
-    private func checkTodoAtCursor() -> Bool {
-        guard let textView = textView,
-              let textStorage = textView.textStorage else { return false }
-        let string = textStorage.string as NSString
-        let paraRange = string.paragraphRange(for: textView.selectedRange())
-        let paraText = string.substring(with: paraRange)
-        return TextEditorLogic.isTodoParagraph(paraText)
-    }
-
-    // MARK: - Formatting Actions
-
-    func toggleBold() {
-        guard let textView = textView else { return }
-        let range = textView.selectedRange()
-        if range.length > 0 {
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
-            textView.textStorage?.beginEditing()
-            textView.textStorage?.enumerateAttribute(.font, in: range) { value, attrRange, _ in
-                guard let font = value as? NSFont else { return }
-                let newFont = toggleBoldTrait(on: font)
-                textView.textStorage?.addAttribute(.font, value: newFont, range: attrRange)
+        // Markers sitting just OUTSIDE the selection → unwrap them.
+        if sel.location >= markerLen, NSMaxRange(sel) + markerLen <= ns.length {
+            let before = ns.substring(with: NSRange(location: sel.location - markerLen, length: markerLen))
+            let after = ns.substring(with: NSRange(location: NSMaxRange(sel), length: markerLen))
+            if before == marker, after == marker {
+                let outer = NSRange(location: sel.location - markerLen,
+                                    length: sel.length + 2 * markerLen)
+                replace(outer, with: selected, in: textView, ts,
+                        selection: NSRange(location: outer.location, length: (selected as NSString).length))
+                updateFromSelection()
+                return
             }
-            textView.textStorage?.endEditing()
-            undoManager?.endUndoGrouping()
-            textView.didChangeText()
-        } else {
-            let font = textView.typingAttributes[.font] as? NSFont ?? defaultFont()
-            textView.typingAttributes[.font] = toggleBoldTrait(on: font)
         }
+
+        // Otherwise toggle markers on the selected substring itself.
+        let result = TextEditorLogic.toggleWrap(selection: selected, marker: marker)
+        replace(sel, with: result.replacement, in: textView, ts,
+                selection: NSRange(location: sel.location, length: (result.replacement as NSString).length))
         updateFromSelection()
     }
 
-    func toggleItalic() {
-        guard let textView = textView else { return }
-        let range = textView.selectedRange()
-        if range.length > 0 {
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
-            textView.textStorage?.beginEditing()
-            textView.textStorage?.enumerateAttribute(.font, in: range) { value, attrRange, _ in
-                guard let font = value as? NSFont else { return }
-                let newFont = toggleItalicTrait(on: font)
-                textView.textStorage?.addAttribute(.font, value: newFont, range: attrRange)
-            }
-            textView.textStorage?.endEditing()
-            undoManager?.endUndoGrouping()
-            textView.didChangeText()
-        } else {
-            let font = textView.typingAttributes[.font] as? NSFont ?? defaultFont()
-            textView.typingAttributes[.font] = toggleItalicTrait(on: font)
-        }
-        updateFromSelection()
-    }
-
-    func toggleUnderline() {
-        guard let textView = textView else { return }
-        let range = textView.selectedRange()
-        if range.length > 0 {
-            let current = textView.textStorage?.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int ?? 0
-            let newValue = current == 0 ? NSUnderlineStyle.single.rawValue : 0
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
-            textView.textStorage?.addAttribute(.underlineStyle, value: newValue, range: range)
-            undoManager?.endUndoGrouping()
-            textView.didChangeText()
-        } else {
-            let current = textView.typingAttributes[.underlineStyle] as? Int ?? 0
-            textView.typingAttributes[.underlineStyle] = current == 0 ? NSUnderlineStyle.single.rawValue : 0
-        }
-        updateFromSelection()
-    }
+    // MARK: - Line prefixes (headings / bullets / checkboxes)
 
     func applyHeading(_ level: HeadingLevel) {
-        guard let textView = textView else { return }
-        let range = paragraphRange(in: textView)
-        let newFont: NSFont
-        if level == .body {
-            newFont = defaultFont()
-        } else {
-            newFont = defaultBoldFont(size: level.fontSize)
+        mutateSelectedLines { line in
+            let stripped = Self.stripHeading(line)
+            if level == .body { return stripped }
+            return String(repeating: "#", count: level.rawValue) + " " + stripped
         }
-        let undoManager = textView.undoManager
-        undoManager?.beginUndoGrouping()
-        textView.textStorage?.addAttribute(.font, value: newFont, range: range)
-        undoManager?.endUndoGrouping()
-        textView.typingAttributes[.font] = newFont
-        currentHeading = level
-        textView.didChangeText()
+        updateFromSelection()
     }
 
     func toggleBulletList() {
-        guard let textView = textView,
-              let textStorage = textView.textStorage else { return }
-        let range = paragraphRange(in: textView)
-        let string = textStorage.string as NSString
-        let paragraphText = string.substring(with: range)
-
-        let undoManager = textView.undoManager
-        undoManager?.beginUndoGrouping()
-
-        if isBulletList {
-            let newText = TextEditorLogic.removeBulletPrefix(fromMultilineText: paragraphText)
-            if textView.shouldChangeText(in: range, replacementString: newText) {
-                textStorage.replaceCharacters(in: range, with: newText)
-                textView.didChangeText()
-            }
-        } else {
-            let newText = TextEditorLogic.addBulletPrefix(toMultilineText: paragraphText)
-            if textView.shouldChangeText(in: range, replacementString: newText) {
-                textStorage.replaceCharacters(in: range, with: newText)
-                textView.didChangeText()
+        let add = !isBulletList
+        mutateSelectedLines { line in
+            let (indent, rest) = Self.splitIndent(line)
+            if add {
+                if rest.isEmpty { return line }
+                return indent + "- " + Self.stripListMarker(rest)
+            } else {
+                return indent + Self.stripListMarker(rest)
             }
         }
-
-        undoManager?.endUndoGrouping()
         updateFromSelection()
     }
 
     func toggleTodo() {
-        guard let textView = textView,
-              let textStorage = textView.textStorage else { return }
-        let range = paragraphRange(in: textView)
-        let string = textStorage.string as NSString
-        let paragraphText = string.substring(with: range)
-
-        let undoManager = textView.undoManager
-        undoManager?.beginUndoGrouping()
-
-        if isTodoItem {
-            // Remove todo prefix from each line
-            let newText = TextEditorLogic.removeTodoPrefix(fromMultilineText: paragraphText)
-            if textView.shouldChangeText(in: range, replacementString: newText) {
-                textStorage.replaceCharacters(in: range, with: newText)
-                let newRange = NSRange(location: range.location, length: (newText as NSString).length)
-                textStorage.addAttribute(.strikethroughStyle, value: 0, range: newRange)
-                textStorage.addAttribute(.foregroundColor, value: NSColor.black, range: newRange)
-                textView.didChangeText()
-            }
-        } else {
-            // Add todo prefix to each line with larger checkbox font
-            let newText = TextEditorLogic.addTodoPrefix(toMultilineText: paragraphText)
-            if textView.shouldChangeText(in: range, replacementString: newText) {
-                textStorage.replaceCharacters(in: range, with: newText)
-                // Now apply larger font to each checkbox character
-                let newString = textStorage.string as NSString
-                let newRange = NSRange(location: range.location, length: (newText as NSString).length)
-                let fullParaRange = newString.paragraphRange(for: newRange)
-                applyCheckboxFont(in: fullParaRange, textStorage: textStorage)
-                textView.didChangeText()
+        let add = !isTodoItem
+        mutateSelectedLines { line in
+            let (indent, rest) = Self.splitIndent(line)
+            if add {
+                if rest.isEmpty { return line }
+                return indent + "- [ ] " + Self.stripListMarker(rest)
+            } else {
+                return indent + Self.stripListMarker(rest)
             }
         }
-
-        undoManager?.endUndoGrouping()
         updateFromSelection()
     }
 
-    /// Toggle checkbox at a specific paragraph location (called on click)
+    /// Toggle the `[ ]`/`[x]` box on the checkbox line that starts at `paraStart`.
     func toggleCheckboxAt(_ paraStart: Int) {
-        guard let textView = textView,
-              let textStorage = textView.textStorage else { return }
-        let string = textStorage.string as NSString
-        let paraRange = string.paragraphRange(for: NSRange(location: paraStart, length: 0))
-        let paraText = string.substring(with: paraRange)
+        guard let textView = textView, let ts = textView.textStorage else { return }
+        let ns = ts.string as NSString
+        let paraRange = ns.paragraphRange(for: NSRange(location: paraStart, length: 0))
+        let line = ns.substring(with: paraRange).replacingOccurrences(of: "\n", with: "")
+        guard let box = TextEditorLogic.checkbox(ofLine: line) else { return }
 
-        let undoManager = textView.undoManager
-        undoManager?.beginUndoGrouping()
-
-        if paraText.hasPrefix("☐ ") {
-            // Check it: ☐ → ☑, strikethrough, gray, push to bottom
-            let checkboxRange = NSRange(location: paraRange.location, length: 1)
-            textStorage.replaceCharacters(in: checkboxRange, with: "☑")
-
-            // Re-fetch paragraph range after replacement
-            let newParaRange = string.paragraphRange(for: NSRange(location: paraRange.location, length: 0))
-
-            // Apply strikethrough to content (not checkbox)
-            if newParaRange.length > 2 {
-                let contentRange = NSRange(location: newParaRange.location + 2, length: newParaRange.length - 2)
-                textStorage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: contentRange)
-            }
-            // Gray out entire line
-            textStorage.addAttribute(.foregroundColor, value: NSColor.gray, range: newParaRange)
-            // Keep checkbox font large
-            let cbRange = NSRange(location: newParaRange.location, length: 1)
-            textStorage.addAttribute(.font, value: Self.checkboxFont, range: cbRange)
-
-            textView.didChangeText()
-
-            // Push to bottom
-            let updatedParaRange = (textStorage.string as NSString).paragraphRange(for: NSRange(location: paraRange.location, length: 0))
-            pushCompletedToBottom(paraRange: updatedParaRange, in: textView)
-
-        } else if paraText.hasPrefix("☑ ") {
-            // Uncheck it: ☑ → ☐, remove strikethrough, restore color
-            let checkboxRange = NSRange(location: paraRange.location, length: 1)
-            textStorage.replaceCharacters(in: checkboxRange, with: "☐")
-
-            let newParaRange = string.paragraphRange(for: NSRange(location: paraRange.location, length: 0))
-            textStorage.addAttribute(.strikethroughStyle, value: 0, range: newParaRange)
-            textStorage.addAttribute(.foregroundColor, value: NSColor.black, range: newParaRange)
-            // Keep checkbox font large
-            let cbRange = NSRange(location: newParaRange.location, length: 1)
-            textStorage.addAttribute(.font, value: Self.checkboxFont, range: cbRange)
-
-            textView.didChangeText()
-        }
-
-        undoManager?.endUndoGrouping()
+        let charLoc = paraRange.location + TextEditorLogic.checkboxToggleOffset(box)
+        guard charLoc < ns.length else { return }
+        let newChar = box.checked ? " " : "x"
+        let sel = textView.selectedRange()
+        replace(NSRange(location: charLoc, length: 1), with: newChar, in: textView, ts, selection: sel)
         updateFromSelection()
     }
 
-    private func pushCompletedToBottom(paraRange: NSRange, in textView: NSTextView) {
-        guard let textStorage = textView.textStorage else { return }
+    // MARK: - Mutation helpers
 
-        // Capture the attributed line
-        let lineAttr = NSMutableAttributedString(attributedString: textStorage.attributedSubstring(from: paraRange))
-
-        // Strip trailing newline from the captured line
-        if lineAttr.string.hasSuffix("\n") {
-            lineAttr.deleteCharacters(in: NSRange(location: lineAttr.length - 1, length: 1))
-        }
-
-        // Delete the original line (including its newline)
-        textStorage.deleteCharacters(in: paraRange)
-
-        // Build insertion: newline if needed + the line
-        let insertion = NSMutableAttributedString()
-        let endStr = textStorage.string
-        if !endStr.isEmpty && !endStr.hasSuffix("\n") {
-            insertion.append(NSAttributedString(string: "\n", attributes: [
-                .font: defaultFont(),
-                .foregroundColor: NSColor.black
-            ]))
-        }
-        insertion.append(lineAttr)
-
-        textStorage.insert(insertion, at: textStorage.length)
+    /// Replace `range` with `string` through the undo-aware path, then restyle.
+    private func replace(_ range: NSRange, with string: String,
+                         in textView: NSTextView, _ ts: NSTextStorage, selection: NSRange) {
+        guard textView.shouldChangeText(in: range, replacementString: string) else { return }
+        ts.replaceCharacters(in: range, with: string)
+        let clamped = NSRange(location: min(selection.location, ts.length),
+                              length: min(selection.length, max(0, ts.length - selection.location)))
+        textView.setSelectedRange(clamped)
         textView.didChangeText()
     }
 
-    /// Apply larger font to checkbox characters (☐/☑) in a range
-    func applyCheckboxFont(in range: NSRange, textStorage: NSTextStorage) {
-        let string = textStorage.string as NSString
-        string.enumerateSubstrings(in: range, options: .byParagraphs) { para, paraRange, _, _ in
-            guard let para = para else { return }
-            if para.hasPrefix("☐") || para.hasPrefix("☑") {
-                let cbRange = NSRange(location: paraRange.location, length: 1)
-                textStorage.addAttribute(.font, value: Self.checkboxFont, range: cbRange)
-            }
-        }
+    /// Apply a per-line transform across every line touched by the selection.
+    private func mutateSelectedLines(_ transform: (String) -> String) {
+        guard let textView = textView, let ts = textView.textStorage else { return }
+        let ns = ts.string as NSString
+        let sel = textView.selectedRange()
+        let para = ns.length > 0 ? ns.paragraphRange(for: sel) : NSRange(location: 0, length: 0)
+        let block = ns.substring(with: para)
+        let hadTrailingNewline = block.hasSuffix("\n")
+        let core = hadTrailingNewline ? String(block.dropLast()) : block
+        let newCore = core.components(separatedBy: "\n").map(transform).joined(separator: "\n")
+        let newBlock = hadTrailingNewline ? newCore + "\n" : newCore
+        replace(para, with: newBlock, in: textView, ts,
+                selection: NSRange(location: para.location, length: (newBlock as NSString).length))
     }
 
-    // MARK: - Helpers
+    // MARK: - Pure line editing helpers
 
-    private func toggleBoldTrait(on font: NSFont) -> NSFont {
-        let manager = NSFontManager.shared
-        let traits = font.fontDescriptor.symbolicTraits
-        if traits.contains(.bold) {
-            return manager.convert(font, toNotHaveTrait: .boldFontMask)
-        } else {
-            return manager.convert(font, toHaveTrait: .boldFontMask)
-        }
+    static func splitIndent(_ line: String) -> (indent: String, rest: String) {
+        let n = TextEditorLogic.leadingSpaces(of: line)
+        let ns = line as NSString
+        return (ns.substring(to: n), ns.substring(from: n))
     }
 
-    private func toggleItalicTrait(on font: NSFont) -> NSFont {
-        let manager = NSFontManager.shared
-        let traits = font.fontDescriptor.symbolicTraits
-        if traits.contains(.italic) {
-            return manager.convert(font, toNotHaveTrait: .italicFontMask)
-        } else {
-            return manager.convert(font, toHaveTrait: .italicFontMask)
+    /// Remove a leading `- `, `* ` or `- [ ] `/`- [x] ` marker from a line whose
+    /// indentation has already been split off (i.e. `rest` has no leading spaces).
+    static func stripListMarker(_ rest: String) -> String {
+        if let box = TextEditorLogic.checkbox(ofLine: rest) {
+            return (rest as NSString).substring(from: box.markerRange.length)
         }
+        if let b = TextEditorLogic.bullet(ofLine: rest) {
+            return (rest as NSString).substring(from: b.markerRange.length)
+        }
+        return rest
     }
 
-    private func paragraphRange(in textView: NSTextView) -> NSRange {
-        let string = textView.string as NSString
-        return string.paragraphRange(for: textView.selectedRange())
+    static func stripHeading(_ line: String) -> String {
+        let level = TextEditorLogic.headingLevel(ofLine: line)
+        guard level > 0 else { return line }
+        return (line as NSString).substring(from: TextEditorLogic.headingMarkerLength(level: level))
     }
 }

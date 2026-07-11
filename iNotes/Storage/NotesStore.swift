@@ -58,8 +58,9 @@ class NotesStore: ObservableObject {
         }
     }
 
-    func updateRTFData(at index: Int, data: Data) {
-        notes[index].rtfData = data
+    func updateText(at index: Int, text: String) {
+        guard index >= 0 && index < notes.count else { return }
+        notes[index].text = text
         notes[index].lastModified = .now
     }
 }

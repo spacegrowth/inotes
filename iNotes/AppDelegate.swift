@@ -33,6 +33,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         set { UserDefaults.standard.set(Int(newValue), forKey: "hotkeyModifiers") }
     }
 
+    // Panel size persists across launches. Defaults match the original 360×420.
+    private static let defaultPanelSize = NSSize(width: 360, height: 420)
+    private static let minPanelSize = NSSize(width: 260, height: 240)
+
+    private var savedPanelSize: NSSize {
+        get {
+            let w = UserDefaults.standard.double(forKey: "panelWidth")
+            let h = UserDefaults.standard.double(forKey: "panelHeight")
+            guard w > 0, h > 0 else { return Self.defaultPanelSize }
+            return NSSize(width: max(w, Self.minPanelSize.width),
+                          height: max(h, Self.minPanelSize.height))
+        }
+        set {
+            UserDefaults.standard.set(newValue.width, forKey: "panelWidth")
+            UserDefaults.standard.set(newValue.height, forKey: "panelHeight")
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
@@ -43,12 +61,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        let initialSize = savedPanelSize
         let hostingView = NSHostingController(rootView: ContentView(store: store))
-        hostingView.view.frame = NSRect(x: 0, y: 0, width: 360, height: 420)
+        hostingView.view.frame = NSRect(origin: .zero, size: initialSize)
 
         panel = KeyablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 420),
-            styleMask: [.nonactivatingPanel, .fullSizeContentView],
+            contentRect: NSRect(origin: .zero, size: initialSize),
+            styleMask: [.nonactivatingPanel, .fullSizeContentView, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -60,11 +79,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = true
         panel.isFloatingPanel = true
+        panel.minSize = Self.minPanelSize
         panel.contentViewController = hostingView
 
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.cornerRadius = 10
         panel.contentView?.layer?.masksToBounds = true
+
+        // Persist the panel size whenever the user resizes it.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(panelDidResize),
+            name: NSWindow.didResizeNotification, object: panel)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleHotKey), name: kHotKeyNotification, object: nil
@@ -79,6 +104,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.post(name: .iNotesFlushPendingEncode, object: nil)
         store.save()
         unregisterHotKey()
+    }
+
+    @objc private func panelDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window == panel else { return }
+        savedPanelSize = panel.frame.size
     }
 
     // MARK: - Status Item Click

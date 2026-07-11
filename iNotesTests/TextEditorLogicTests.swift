@@ -2,208 +2,197 @@ import XCTest
 import CoreGraphics
 @testable import iNotes
 
-/// Characterization + edge-case tests for `TextEditorLogic` (the pure,
-/// dependency-free editor string logic extracted from the AppKit views).
-///
-/// Most tests PIN current behavior (they pass). A handful assert the
-/// CORRECT/desired behavior where current behavior is wrong; those are
-/// marked `// EXPECTED FAIL — bug #N` and map to a suspected bug in the spec.
+/// Tests for `TextEditorLogic` — the pure markdown-source parsing layer that
+/// drives live styling, list editing (Enter/Tab), and the Cmd+B/I/U wrap.
 final class TextEditorLogicTests: XCTestCase {
 
-    // MARK: - Bullet level detection (levels 1-3)
+    // MARK: - Headings
 
-    func testBulletLevel_detectsEachLevel() {
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "• item"), 1)
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "    ◦ item"), 2)
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "        ▪ item"), 3)
+    func testHeadingLevel_detectsHashPrefixes() {
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "# h1"), 1)
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "## h2"), 2)
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "### h3"), 3)
     }
 
-    func testBulletLevel_nonBulletIsZero() {
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "plain text"), 0)
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: ""), 0)
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "    indented but no marker"), 0)
+    func testHeadingLevel_requiresTrailingSpaceAndCaps() {
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "#tag"), 0, "no space → not a heading")
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "#### too deep"), 0)
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "plain"), 0)
+        XCTAssertEqual(TextEditorLogic.headingLevel(ofLine: "#"), 0)
     }
 
-    func testBulletLevel_deepestMatchWins() {
-        // Level-3 prefix begins with 8 spaces; must not be mis-read as a
-        // shallower level. Reversed iteration should return 3, not 2/1.
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "        ▪ deep"), 3)
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "    ◦ mid"), 2)
+    func testHeadingMarkerLength() {
+        XCTAssertEqual(TextEditorLogic.headingMarkerLength(level: 1), 2) // "# "
+        XCTAssertEqual(TextEditorLogic.headingMarkerLength(level: 3), 4) // "### "
     }
 
-    func testBulletLevel_markerWithoutTrailingSpace_requiresSpace() {
-        // FIXED — bug #4: bulletLevel and isBulletParagraph now agree. Both
-        // require the trailing space, so a bare marker with no space is NOT a
-        // bullet line.
-        XCTAssertEqual(TextEditorLogic.bulletLevel(of: "•nospacetext"), 0)
-        XCTAssertFalse(TextEditorLogic.isBulletParagraph("•nospacetext"))
+    // MARK: - Indentation
+
+    func testLeadingSpaces() {
+        XCTAssertEqual(TextEditorLogic.leadingSpaces(of: "no indent"), 0)
+        XCTAssertEqual(TextEditorLogic.leadingSpaces(of: "  two"), 2)
+        XCTAssertEqual(TextEditorLogic.leadingSpaces(of: "    four"), 4)
     }
 
-    // MARK: - Bullet prefixes & prefix-length math (tab / backtab)
+    // MARK: - Checkboxes
 
-    func testBulletPrefix_exactStrings() {
-        XCTAssertEqual(TextEditorLogic.bulletPrefix(for: 1), "• ")
-        XCTAssertEqual(TextEditorLogic.bulletPrefix(for: 2), "    ◦ ")
-        XCTAssertEqual(TextEditorLogic.bulletPrefix(for: 3), "        ▪ ")
-        XCTAssertEqual(TextEditorLogic.bulletPrefix(for: 0), "")
-        XCTAssertEqual(TextEditorLogic.bulletPrefix(for: 4), "")
+    func testCheckbox_unchecked() {
+        let box = TextEditorLogic.checkbox(ofLine: "- [ ] task")
+        XCTAssertEqual(box, TextEditorLogic.Checkbox(indent: 0, checked: false,
+                                                     markerRange: NSRange(location: 0, length: 6)))
     }
 
-    func testBulletPrefixLength_matchesUTF16LengthOfPrefix() {
-        // The length must be in UTF-16 code units because it feeds NSRange /
-        // replaceCharacters. Confirm it equals the NSString length of the prefix.
-        for level in 1...3 {
-            let prefix = TextEditorLogic.bulletPrefix(for: level)
-            let expectedUTF16 = (prefix as NSString).length
-            XCTAssertEqual(TextEditorLogic.bulletPrefixLength(of: "anything", level: level),
-                           expectedUTF16,
-                           "level \(level) prefix length must be UTF-16 units")
-        }
+    func testCheckbox_checked_bothCases() {
+        XCTAssertEqual(TextEditorLogic.checkbox(ofLine: "- [x] done")?.checked, true)
+        XCTAssertEqual(TextEditorLogic.checkbox(ofLine: "- [X] done")?.checked, true)
     }
 
-    func testBulletPrefixLength_isContentIndependent_multiByte() {
-        // Bug #1 (mixed counting units) probe: include a multi-byte / emoji line.
-        // The extracted helper ignores paraText, so length stays fixed regardless
-        // of content — UTF-16-correct here. (Refutes bug #1 in the PURE layer;
-        // the surrogate-pair risk remains in the view-layer range math.)
-        let emojiLine = "• 👍🏽 family 👨‍👩‍👧‍👦 emoji"
-        XCTAssertEqual(TextEditorLogic.bulletPrefixLength(of: emojiLine, level: 1), 2)
-        let deepEmoji = "        ▪ 𝕬 astral plane 🧬"
-        XCTAssertEqual(TextEditorLogic.bulletPrefixLength(of: deepEmoji, level: 3), 10)
+    func testCheckbox_indented() {
+        let box = TextEditorLogic.checkbox(ofLine: "    - [ ] nested")
+        XCTAssertEqual(box?.indent, 4)
+        XCTAssertEqual(box?.markerRange, NSRange(location: 0, length: 10))
     }
 
-    func testTabMath_indentDeltaIsConstant() {
-        // insertTab replaces the level-N prefix with the level-(N+1) prefix and
-        // shifts the cursor by (newLen - oldLen). Pin that delta.
-        let old1 = TextEditorLogic.bulletPrefixLength(of: "• x", level: 1)
-        let new2 = (TextEditorLogic.bulletPrefix(for: 2) as NSString).length
-        XCTAssertEqual(new2 - old1, 4) // "• " (2) -> "    ◦ " (6)
-
-        let old2 = TextEditorLogic.bulletPrefixLength(of: "    ◦ x", level: 2)
-        let new3 = (TextEditorLogic.bulletPrefix(for: 3) as NSString).length
-        XCTAssertEqual(new3 - old2, 4) // "    ◦ " (6) -> "        ▪ " (10)
+    func testCheckbox_starBulletAccepted() {
+        XCTAssertNotNil(TextEditorLogic.checkbox(ofLine: "* [ ] task"))
     }
 
-    func testBacktabMath_outdentDeltaIsConstant() {
-        let old3 = TextEditorLogic.bulletPrefixLength(of: "        ▪ x", level: 3)
-        let new2 = (TextEditorLogic.bulletPrefix(for: 2) as NSString).length
-        XCTAssertEqual(new2 - old3, -4) // 10 -> 6
-
-        let old2 = TextEditorLogic.bulletPrefixLength(of: "    ◦ x", level: 2)
-        let new1 = (TextEditorLogic.bulletPrefix(for: 1) as NSString).length
-        XCTAssertEqual(new1 - old2, -4) // 6 -> 2
+    func testCheckbox_rejectsNonCheckbox() {
+        XCTAssertNil(TextEditorLogic.checkbox(ofLine: "- bullet"))
+        XCTAssertNil(TextEditorLogic.checkbox(ofLine: "plain"))
+        XCTAssertNil(TextEditorLogic.checkbox(ofLine: "- [z] bad"))
+        XCTAssertNil(TextEditorLogic.checkbox(ofLine: "- []"))
     }
 
-    // MARK: - Bullet add/remove (multiline)
-
-    func testBulletAddRemove_roundTrips() {
-        let input = "alpha\nbeta\ngamma"
-        let bulleted = TextEditorLogic.addBulletPrefix(toMultilineText: input)
-        XCTAssertEqual(bulleted, "• alpha\n• beta\n• gamma")
-        XCTAssertEqual(TextEditorLogic.removeBulletPrefix(fromMultilineText: bulleted), input)
+    func testCheckboxToggleOffset() {
+        let box = TextEditorLogic.checkbox(ofLine: "  - [ ] x")!
+        XCTAssertEqual(TextEditorLogic.checkboxToggleOffset(box), 5) // indent(2) + 3
     }
 
-    func testBulletAdd_preservesEmptyLines() {
-        let input = "alpha\n\ngamma"
-        XCTAssertEqual(TextEditorLogic.addBulletPrefix(toMultilineText: input),
-                       "• alpha\n\n• gamma")
+    // MARK: - Bullets
+
+    func testBullet_detectsDashAndStar() {
+        XCTAssertEqual(TextEditorLogic.bullet(ofLine: "- item")?.markerRange,
+                       NSRange(location: 0, length: 2))
+        XCTAssertEqual(TextEditorLogic.bullet(ofLine: "* item")?.markerRange,
+                       NSRange(location: 0, length: 2))
     }
 
-    func testBulletRemove_handlesMixedLevels() {
-        let input = "• one\n    ◦ two\n        ▪ three"
-        XCTAssertEqual(TextEditorLogic.removeBulletPrefix(fromMultilineText: input),
-                       "one\ntwo\nthree")
+    func testBullet_indented() {
+        let b = TextEditorLogic.bullet(ofLine: "  - nested")
+        XCTAssertEqual(b?.indent, 2)
+        XCTAssertEqual(b?.markerRange, NSRange(location: 0, length: 4))
     }
 
-    func testBulletAdd_isIdempotent() {
-        // FIXED — bug #3: re-applying the bullet prefix is a no-op on a line that
-        // already carries one (no more "• • x").
-        let once = TextEditorLogic.addBulletPrefix(toMultilineText: "x")
-        XCTAssertEqual(once, "• x")
-        XCTAssertEqual(TextEditorLogic.addBulletPrefix(toMultilineText: once), "• x")
+    func testBullet_checkboxIsNotAPlainBullet() {
+        XCTAssertNil(TextEditorLogic.bullet(ofLine: "- [ ] task"),
+                     "a checkbox line must not also parse as a plain bullet")
     }
 
-    // MARK: - Todo add/remove idempotency
-
-    func testTodoAddRemove_roundTrips() {
-        let input = "buy milk\nwalk dog"
-        let todod = TextEditorLogic.addTodoPrefix(toMultilineText: input)
-        XCTAssertEqual(todod, "☐ buy milk\n☐ walk dog")
-        XCTAssertEqual(TextEditorLogic.removeTodoPrefix(fromMultilineText: todod), input)
+    func testBullet_rejectsNonBullet() {
+        XCTAssertNil(TextEditorLogic.bullet(ofLine: "-no space"))
+        XCTAssertNil(TextEditorLogic.bullet(ofLine: "plain"))
     }
 
-    func testTodoRemove_handlesCheckedAndUnchecked() {
-        let input = "☑ done item\n☐ pending item"
-        XCTAssertEqual(TextEditorLogic.removeTodoPrefix(fromMultilineText: input),
-                       "done item\npending item")
+    // MARK: - List continuation (Enter)
+
+    func testListContinuation_bullet() {
+        XCTAssertEqual(TextEditorLogic.listContinuationPrefix(for: "- item"), "- ")
+        XCTAssertEqual(TextEditorLogic.listContinuationPrefix(for: "  - nested"), "  - ")
     }
 
-    func testTodoRemove_isIdempotent() {
-        // Removing twice is safe: second pass is a no-op (no prefix present).
-        let removedOnce = TextEditorLogic.removeTodoPrefix(fromMultilineText: "☐ a\n☐ b")
-        XCTAssertEqual(TextEditorLogic.removeTodoPrefix(fromMultilineText: removedOnce),
-                       removedOnce)
+    func testListContinuation_checkboxAlwaysUnchecked() {
+        XCTAssertEqual(TextEditorLogic.listContinuationPrefix(for: "- [ ] a"), "- [ ] ")
+        XCTAssertEqual(TextEditorLogic.listContinuationPrefix(for: "- [x] done"), "- [ ] ",
+                       "continuing a checked item starts a fresh unchecked box")
+        XCTAssertEqual(TextEditorLogic.listContinuationPrefix(for: "    - [ ] deep"), "    - [ ] ")
     }
 
-    func testTodoAdd_isIdempotent() {
-        // FIXED — bug #3: re-applying the todo prefix is a no-op on a line that
-        // already carries one (no more "☐ ☐ task").
-        let once = TextEditorLogic.addTodoPrefix(toMultilineText: "task")
-        XCTAssertEqual(once, "☐ task")
-        XCTAssertEqual(TextEditorLogic.addTodoPrefix(toMultilineText: once), "☐ task")
+    func testListContinuation_emptyItemReturnsNil() {
+        XCTAssertNil(TextEditorLogic.listContinuationPrefix(for: "- "))
+        XCTAssertNil(TextEditorLogic.listContinuationPrefix(for: "- [ ] "))
+        XCTAssertNil(TextEditorLogic.listContinuationPrefix(for: "plain text"))
     }
 
-    func testTodoAdd_preservesEmptyLines() {
-        XCTAssertEqual(TextEditorLogic.addTodoPrefix(toMultilineText: "a\n\nb"),
-                       "☐ a\n\n☐ b")
+    func testIsEmptyListItem() {
+        XCTAssertTrue(TextEditorLogic.isEmptyListItem("- "))
+        XCTAssertTrue(TextEditorLogic.isEmptyListItem("  - [ ] "))
+        XCTAssertFalse(TextEditorLogic.isEmptyListItem("- x"))
+        XCTAssertFalse(TextEditorLogic.isEmptyListItem("plain"))
     }
 
-    // MARK: - Auto-bullet on "- "
-
-    func testDashToBullet_firesForFreshDash() {
-        XCTAssertTrue(TextEditorLogic.shouldConvertDashToBullet("- "))
+    func testListMarkerLength() {
+        XCTAssertEqual(TextEditorLogic.listMarkerLength(of: "- x"), 2)
+        XCTAssertEqual(TextEditorLogic.listMarkerLength(of: "  - x"), 4)
+        XCTAssertEqual(TextEditorLogic.listMarkerLength(of: "- [ ] x"), 6)
+        XCTAssertEqual(TextEditorLogic.listMarkerLength(of: "plain"), 0)
     }
 
-    func testDashToBullet_ignoresNonDashLines() {
-        XCTAssertFalse(TextEditorLogic.shouldConvertDashToBullet("text"))
-        XCTAssertFalse(TextEditorLogic.shouldConvertDashToBullet("-no space"))
+    // MARK: - Inline spans
+
+    func testInline_bold() {
+        let spans = TextEditorLogic.inlineSpans(in: "a **bold** b")
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertEqual(spans.first?.kind, .bold)
+        XCTAssertEqual(spans.first?.fullRange, NSRange(location: 2, length: 8))
+        XCTAssertEqual(spans.first?.contentRange, NSRange(location: 4, length: 4))
     }
 
-    func testDashToBullet_doesNotFireOnAlreadyTypedLine() {
-        // FIXED — bug #1: auto-bullet now fires only for a freshly-started "- "
-        // line, not on any line that merely starts with "- ". Typing a space on
-        // an existing "- alpha" line no longer converts the leading dash.
-        XCTAssertFalse(TextEditorLogic.shouldConvertDashToBullet("- alpha "),
-                       "should not re-fire on a line that already has content")
-        XCTAssertFalse(TextEditorLogic.shouldConvertDashToBullet("- alpha"),
-                       "non-empty content after the dash must not convert")
+    func testInline_italicStarAndUnderscore() {
+        XCTAssertEqual(TextEditorLogic.inlineSpans(in: "an *italic* one").first?.kind, .italic)
+        XCTAssertEqual(TextEditorLogic.inlineSpans(in: "an _italic_ one").first?.kind, .italic)
     }
 
-    // MARK: - Heading detection by font size (boundaries)
-
-    func testHeadingLevel_appSizesRoundTripCleanly() {
-        // The app's own heading sizes must map back to their level (bug #5 probe).
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 22), 1) // h1
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 18), 2) // h2
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 15), 3) // h3
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 13), 0) // body
+    func testInline_code() {
+        let spans = TextEditorLogic.inlineSpans(in: "call `foo()` now")
+        XCTAssertEqual(spans.first?.kind, .code)
+        XCTAssertEqual(spans.first?.markerLength, 1)
     }
 
-    func testHeadingLevel_boundaryValues() {
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 20), 1)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 19.99), 2)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 16), 2)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 15.99), 3)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 14.5), 3)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 14.49), 0)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 0), 0)
+    func testInline_boldNotMisreadAsTwoItalics() {
+        let spans = TextEditorLogic.inlineSpans(in: "**b**")
+        XCTAssertEqual(spans.count, 1)
+        XCTAssertEqual(spans.first?.kind, .bold)
     }
 
-    func testHeadingLevel_arbitrarySizesAreQuantized() {
-        // CHARACTERIZATION of bug #5 lossiness: a non-app size (e.g. 21pt pasted
-        // text) is bucketed to h1. Re-applying the heading would resize 21 -> 22,
-        // so size-threshold detection is not a clean inverse for arbitrary sizes.
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 21), 1)
-        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 17), 2)
+    func testInline_underscoreInsideWordIsNotItalic() {
+        XCTAssertTrue(TextEditorLogic.inlineSpans(in: "snake_case_name").isEmpty,
+                      "underscores inside a word must not become italic")
+    }
+
+    func testInline_multipleSpansSortedByLocation() {
+        let spans = TextEditorLogic.inlineSpans(in: "`c` then **b** then *i*")
+        XCTAssertEqual(spans.map(\.kind), [.code, .bold, .italic])
+    }
+
+    func testInline_markersDoNotCrossNewlines() {
+        XCTAssertTrue(TextEditorLogic.inlineSpans(in: "*a\nb*").isEmpty,
+                      "a marker pair split across lines must not match")
+    }
+
+    // MARK: - Wrap toggle (Cmd+B/I/U)
+
+    func testToggleWrap_addsMarkers() {
+        let r = TextEditorLogic.toggleWrap(selection: "text", marker: "**")
+        XCTAssertEqual(r, TextEditorLogic.WrapResult(replacement: "**text**", removed: false))
+    }
+
+    func testToggleWrap_stripsWhenAlreadyWrapped() {
+        let r = TextEditorLogic.toggleWrap(selection: "**text**", marker: "**")
+        XCTAssertEqual(r, TextEditorLogic.WrapResult(replacement: "text", removed: true))
+    }
+
+    func testToggleWrap_italicMarker() {
+        XCTAssertEqual(TextEditorLogic.toggleWrap(selection: "x", marker: "*").replacement, "*x*")
+        XCTAssertEqual(TextEditorLogic.toggleWrap(selection: "*x*", marker: "*").replacement, "x")
+    }
+
+    // MARK: - RTF-migration heading size mapping
+
+    func testHeadingLevel_forFontSize() {
+        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 22), 1)
+        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 18), 2)
+        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 15), 3)
+        XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 13), 0)
     }
 }
