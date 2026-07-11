@@ -2,41 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>iNotes</string>
-    <key>CFBundleDisplayName</key>
-    <string>iNotes</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleVersion</key>
-    <string>7</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.7</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>LSMinimumSystemVersion</key>
-    <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-
-    <!--
-      Sparkle auto-update keys — DIRECT-DOWNLOAD BUILD ONLY. Harmless in a
-      future Mac App Store build (Sparkle won't be linked there, so these are
-      simply inert). See DISTRIBUTION.md.
-
-      SUFeedURL is served from GitHub Pages (site/appcast.xml deploys there via
-      .github/workflows/pages.yml). installer/release.sh regenerates that feed
-      with generate_appcast on each release.
-    -->
-    <key>SUFeedURL</key>
-    <string>https://spacegrowth.github.io/inotes/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>PAH3T7Y8eL9tdQXBjIksAVFqv6xu2sv6seP8GXa8ukk=</string>
-    <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
+	<key>CFBundleDisplayName</key>
+	<string>iNotes</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>iNotes</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.7</string>
+	<key>CFBundleVersion</key>
+	<string>1.7</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://spacegrowth.github.io/inotes/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>PAH3T7Y8eL9tdQXBjIksAVFqv6xu2sv6seP8GXa8ukk=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
