@@ -154,6 +154,55 @@ enum TextEditorLogic {
         return 0
     }
 
+    // MARK: - Marker glyph substitution
+
+    /// Display glyphs for bullet nesting depth 0/1/2+ (`•` / `◦` / `▪`).
+    static let bulletGlyphs = ["•", "◦", "▪"]
+
+    enum MarkerKind: Equatable { case bullet, checkbox }
+
+    /// Where and what to draw in place of a line's literal list marker. The
+    /// `range` is UTF-16 offsets **within the line** covering the SINGLE source
+    /// cell whose glyph gets replaced by `glyph`; the underlying characters are
+    /// never modified (the source stays portable markdown).
+    struct MarkerRender: Equatable {
+        /// The one cell (the dash / box) whose glyph is replaced.
+        var range: NSRange
+        /// The glyph string to draw at that cell.
+        var glyph: String
+        /// Whether this is a bullet (tight 1:1 swap) or a checkbox (drawn larger,
+        /// with the surrounding syntax collapsed — see `checkboxHiddenRange`).
+        var kind: MarkerKind
+    }
+
+    /// The marker glyph to render for a line, or `nil` when the line has no
+    /// list marker. Both bullets and checkboxes replace only ONE cell — the
+    /// dash — with the display glyph. For checkboxes the remaining ` [ ]` /
+    /// ` [x]` syntax is collapsed to zero width by `checkboxHiddenRange` so the
+    /// content butts right up against the box (`☐ task`, not `☐     task`).
+    static func markerRender(forLine line: String) -> MarkerRender? {
+        if let cb = checkbox(ofLine: line) {
+            return MarkerRender(range: NSRange(location: cb.indent, length: 1),
+                                glyph: cb.checked ? "☑" : "☐", kind: .checkbox)
+        }
+        if let b = bullet(ofLine: line) {
+            let depth = min(b.indent / indentUnit, bulletGlyphs.count - 1)
+            return MarkerRender(range: NSRange(location: b.indent, length: 1),
+                                glyph: bulletGlyphs[depth], kind: .bullet)
+        }
+        return nil
+    }
+
+    /// For a checkbox line, the range within the line of the four syntax
+    /// characters after the box cell — ` [ ]` / ` [x]` — that should be laid out
+    /// as zero-advancement (hidden) glyphs so the box collapses to one cell plus
+    /// its trailing space. `nil` for non-checkbox lines. The box cell (the dash)
+    /// and the trailing space are kept, yielding a rendered `☐ ` marker.
+    static func checkboxHiddenRange(forLine line: String) -> NSRange? {
+        guard let cb = checkbox(ofLine: line) else { return nil }
+        return NSRange(location: cb.indent + 1, length: 4)
+    }
+
     // MARK: - Inline spans (bold / italic / code)
 
     enum InlineKind: Equatable { case bold, italic, code }
@@ -212,6 +261,38 @@ enum TextEditorLogic {
 
         spans.sort { $0.fullRange.location < $1.fullRange.location }
         return spans
+    }
+
+    // MARK: - Hidden syntax (zero-width markers)
+
+    /// All UTF-16 ranges **within a line** whose glyphs should be laid out as
+    /// zero-width (`.null`) so the markdown syntax vanishes while the styled
+    /// text stays — live-preview style. Covers, in one pass:
+    ///   - checkbox syntax ` [ ]` / ` [x]` (the box cell itself is drawn, not hidden),
+    ///   - the heading prefix `#…# ` (hashes + the one following space),
+    ///   - the open/close markers of every complete inline span (`**`, `*`, `_`, `` ` ``).
+    ///
+    /// Only *complete* spans hide — a half-typed `**bold` (no closing `**`) is
+    /// not a span, so its markers stay visible until closed. The source
+    /// characters are never removed; only their glyphs are nulled.
+    static func hiddenSyntaxRanges(forLine line: String) -> [NSRange] {
+        var ranges: [NSRange] = []
+
+        if let cb = checkboxHiddenRange(forLine: line) {
+            ranges.append(cb)
+        }
+
+        let level = headingLevel(ofLine: line)
+        if level > 0 {
+            ranges.append(NSRange(location: 0, length: headingMarkerLength(level: level)))
+        }
+
+        for span in inlineSpans(in: line) {
+            ranges.append(span.openMarkerRange)
+            ranges.append(span.closeMarkerRange)
+        }
+
+        return ranges
     }
 
     // MARK: - Cmd+B/I/U wrap/unwrap

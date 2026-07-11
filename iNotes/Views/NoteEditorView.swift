@@ -26,35 +26,62 @@ func defaultBoldFont(size: CGFloat = 13) -> NSFont {
 class RichNoteTextView: NSTextView {
     weak var editorState: EditorState?
 
-    // MARK: - Cursor rects for checkboxes
+    // MARK: - Cursor: pointing hand over checkboxes
 
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        guard let layoutManager = layoutManager,
-              let textContainer = textContainer else { return }
+    // NSTextView continuously restores the I-beam through its own cursor-rect
+    // machinery, which clobbers any `addCursorRect(_:cursor:)` we register in
+    // `resetCursorRects`. The cursor must instead be set at the responder level
+    // in `cursorUpdate(with:)`, which is where NSTextView decides the cursor
+    // during mouse tracking. A `.cursorUpdate` tracking area guarantees it fires
+    // across the whole text area.
 
-        let string = self.string as NSString
-        guard string.length > 0 else { return }
+    private var cursorTrackingArea: NSTrackingArea?
 
-        var loc = 0
-        while loc < string.length {
-            let paraRange = string.paragraphRange(for: NSRange(location: loc, length: 0))
-            let line = string.substring(with: paraRange).replacingOccurrences(of: "\n", with: "")
-            if let box = TextEditorLogic.checkbox(ofLine: line) {
-                let cbRange = NSRange(location: paraRange.location, length: box.markerRange.length)
-                let glyphRange = layoutManager.glyphRange(forCharacterRange: cbRange, actualCharacterRange: nil)
-                var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-                rect.origin.x += textContainerInset.width
-                rect.origin.y += textContainerInset.height
-                addCursorRect(rect, cursor: .pointingHand)
-            }
-            loc = NSMaxRange(paraRange)
-        }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = cursorTrackingArea { removeTrackingArea(existing) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.activeInKeyWindow, .inVisibleRect, .cursorUpdate, .mouseMoved],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        cursorTrackingArea = area
     }
 
-    override func didChangeText() {
-        super.didChangeText()
-        window?.invalidateCursorRects(for: self)
+    override func cursorUpdate(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let boxRect = checkboxBoxRect(at: point), boxRect.contains(point) {
+            NSCursor.pointingHand.set()
+            return
+        }
+        super.cursorUpdate(with: event)
+    }
+
+    /// The on-screen rect of the checkbox box for the line under `point`, in view
+    /// coordinates, or `nil` when that line is not a checkbox. Uses the same
+    /// `MarkerLayoutManager.checkboxBoxRect` geometry the box is drawn with, and
+    /// the same box+space width as the click target in `mouseDown`.
+    private func checkboxBoxRect(at point: NSPoint) -> NSRect? {
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer else { return nil }
+        let string = self.string as NSString
+        guard string.length > 0 else { return nil }
+
+        let charIndex = characterIndexForInsertion(at: point)
+        guard charIndex <= string.length else { return nil }
+        let paraRange = string.paragraphRange(for: NSRange(location: min(charIndex, string.length - 1), length: 0))
+        let line = string.substring(with: paraRange).replacingOccurrences(of: "\n", with: "")
+        guard let box = TextEditorLogic.checkbox(ofLine: line) else { return nil }
+
+        let boxCell = NSRange(location: paraRange.location + box.indent, length: 1)
+        let boxGlyph = layoutManager.glyphRange(forCharacterRange: boxCell, actualCharacterRange: nil)
+        let cellRect = layoutManager.boundingRect(forGlyphRange: boxGlyph, in: textContainer)
+        let lineRect = layoutManager.lineFragmentRect(forGlyphAt: boxGlyph.location, effectiveRange: nil)
+        var rect = MarkerLayoutManager.checkboxBoxRect(cellRect: cellRect, lineRect: lineRect)
+        rect.size.width = max(rect.size.width, cellRect.size.width * 2)
+        rect.origin.x += textContainerInset.width
+        rect.origin.y += textContainerInset.height
+        return rect
     }
 
     // MARK: - Key handling (Cmd+B/I/U, undo/redo)
@@ -90,7 +117,12 @@ class RichNoteTextView: NSTextView {
             let line = string.substring(with: paraRange).replacingOccurrences(of: "\n", with: "")
             if let box = TextEditorLogic.checkbox(ofLine: line) {
                 let clickOffset = charIndex - paraRange.location
-                if clickOffset <= box.markerRange.length {
+                // The marker's syntax is collapsed to zero width on screen, so
+                // the whole `- [ ] ` maps to ~2 visible cells (box + space).
+                // Any insertion index within the 6-char marker (offset <
+                // markerRange.length) is a click on the box region → toggle;
+                // the first content char (offset == length) places the caret.
+                if clickOffset < box.markerRange.length {
                     editorState?.toggleCheckboxAt(paraRange.location)
                     return
                 }
@@ -197,6 +229,9 @@ struct NoteEditorView: NSViewRepresentable {
 
         let oldTextView = scrollView.documentView as! NSTextView
         let textContainer = oldTextView.textContainer!
+        // Swap in a layout manager that draws list markers as pretty glyphs
+        // (•/◦/▪, ☐/☑) without altering the source characters or layout.
+        textContainer.replaceLayoutManager(MarkerLayoutManager())
         let richTextView = RichNoteTextView(frame: oldTextView.frame, textContainer: textContainer)
         richTextView.editorState = editorState
         scrollView.documentView = richTextView

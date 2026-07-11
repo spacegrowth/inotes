@@ -128,6 +128,128 @@ final class TextEditorLogicTests: XCTestCase {
         XCTAssertEqual(TextEditorLogic.listMarkerLength(of: "plain"), 0)
     }
 
+    // MARK: - Marker glyph substitution
+
+    func testMarkerRender_bulletDepthGlyphs() {
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "- top"),
+                       TextEditorLogic.MarkerRender(range: NSRange(location: 0, length: 1), glyph: "•", kind: .bullet))
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "  - mid"),
+                       TextEditorLogic.MarkerRender(range: NSRange(location: 2, length: 1), glyph: "◦", kind: .bullet))
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "    - deep"),
+                       TextEditorLogic.MarkerRender(range: NSRange(location: 4, length: 1), glyph: "▪", kind: .bullet))
+    }
+
+    func testMarkerRender_bulletDepthClampsBeyondThree() {
+        // 6+ spaces still renders the deepest glyph, replacing just the dash.
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "      - x")?.glyph, "▪")
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "      - x")?.range,
+                       NSRange(location: 6, length: 1))
+    }
+
+    func testMarkerRender_checkboxGlyphs() {
+        // Checkbox now replaces only the ONE box cell (the dash); the rest of
+        // `- [ ] ` is collapsed via checkboxHiddenRange.
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "- [ ] task"),
+                       TextEditorLogic.MarkerRender(range: NSRange(location: 0, length: 1), glyph: "☐", kind: .checkbox))
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "- [x] done"),
+                       TextEditorLogic.MarkerRender(range: NSRange(location: 0, length: 1), glyph: "☑", kind: .checkbox))
+    }
+
+    func testMarkerRender_indentedCheckbox() {
+        // The box cell sits at the indent; length is 1 (collapse handles the rest).
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "    - [x] deep"),
+                       TextEditorLogic.MarkerRender(range: NSRange(location: 4, length: 1), glyph: "☑", kind: .checkbox))
+    }
+
+    func testMarkerRender_starBulletAndCheckbox() {
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "* item")?.glyph, "•")
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "* [ ] item")?.glyph, "☐")
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "* item")?.kind, .bullet)
+        XCTAssertEqual(TextEditorLogic.markerRender(forLine: "* [ ] item")?.kind, .checkbox)
+    }
+
+    func testMarkerRender_nonListLinesReturnNil() {
+        XCTAssertNil(TextEditorLogic.markerRender(forLine: "plain text"))
+        XCTAssertNil(TextEditorLogic.markerRender(forLine: "# heading"))
+        XCTAssertNil(TextEditorLogic.markerRender(forLine: "-no space"))
+        XCTAssertNil(TextEditorLogic.markerRender(forLine: ""))
+    }
+
+    // MARK: - Checkbox syntax collapse (hidden range)
+
+    func testCheckboxHiddenRange_coversSyntaxAfterBox() {
+        // ` [ ]` / ` [x]` (4 chars) after the box cell are hidden.
+        XCTAssertEqual(TextEditorLogic.checkboxHiddenRange(forLine: "- [ ] task"),
+                       NSRange(location: 1, length: 4))
+        XCTAssertEqual(TextEditorLogic.checkboxHiddenRange(forLine: "- [x] done"),
+                       NSRange(location: 1, length: 4))
+    }
+
+    func testCheckboxHiddenRange_indented() {
+        XCTAssertEqual(TextEditorLogic.checkboxHiddenRange(forLine: "    - [ ] deep"),
+                       NSRange(location: 5, length: 4))
+    }
+
+    func testCheckboxHiddenRange_nilForNonCheckbox() {
+        XCTAssertNil(TextEditorLogic.checkboxHiddenRange(forLine: "- bullet"))
+        XCTAssertNil(TextEditorLogic.checkboxHiddenRange(forLine: "plain"))
+    }
+
+    // MARK: - Hidden syntax ranges (headings + inline markers)
+
+    private func hidden(_ line: String) -> Set<NSRange> {
+        Set(TextEditorLogic.hiddenSyntaxRanges(forLine: line))
+    }
+
+    func testHiddenSyntax_headingPrefixEachLevel() {
+        XCTAssertEqual(hidden("# Title"), [NSRange(location: 0, length: 2)])   // "# "
+        XCTAssertEqual(hidden("## Sub"), [NSRange(location: 0, length: 3)])    // "## "
+        XCTAssertEqual(hidden("### Deep"), [NSRange(location: 0, length: 4)])  // "### "
+    }
+
+    func testHiddenSyntax_bold() {
+        // "a **bold** b": open `**` at 2, close `**` at 8.
+        XCTAssertEqual(hidden("a **bold** b"),
+                       [NSRange(location: 2, length: 2), NSRange(location: 8, length: 2)])
+    }
+
+    func testHiddenSyntax_italicStarAndUnderscore() {
+        XCTAssertEqual(hidden("*i*"),
+                       [NSRange(location: 0, length: 1), NSRange(location: 2, length: 1)])
+        XCTAssertEqual(hidden("_i_"),
+                       [NSRange(location: 0, length: 1), NSRange(location: 2, length: 1)])
+    }
+
+    func testHiddenSyntax_code() {
+        // "`c`": backticks at 0 and 2.
+        XCTAssertEqual(hidden("`c`"),
+                       [NSRange(location: 0, length: 1), NSRange(location: 2, length: 1)])
+    }
+
+    func testHiddenSyntax_unclosedMarkerNotHidden() {
+        XCTAssertTrue(hidden("**bold").isEmpty, "half-typed bold must stay visible")
+        XCTAssertTrue(hidden("*italic").isEmpty, "half-typed italic must stay visible")
+        XCTAssertTrue(hidden("`code").isEmpty, "half-typed code must stay visible")
+    }
+
+    func testHiddenSyntax_boldInsideHeading() {
+        // "# a **b**": heading prefix (0,2) + bold markers (4,2) and (7,2).
+        XCTAssertEqual(hidden("# a **b**"),
+                       [NSRange(location: 0, length: 2),
+                        NSRange(location: 4, length: 2),
+                        NSRange(location: 7, length: 2)])
+    }
+
+    func testHiddenSyntax_plainLineHasNone() {
+        XCTAssertTrue(hidden("just plain text").isEmpty)
+    }
+
+    func testHiddenSyntax_checkboxSyntaxIncluded() {
+        // Checkbox line still contributes its ` [ ]` hidden range through the
+        // unified helper (the box cell itself is drawn, not hidden).
+        XCTAssertEqual(hidden("- [ ] task"), [NSRange(location: 1, length: 4)])
+    }
+
     // MARK: - Inline spans
 
     func testInline_bold() {

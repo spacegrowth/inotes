@@ -25,7 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var shortcutWindow: NSWindow?
 
     private var currentKeyCode: UInt32 {
-        get { UInt32(UserDefaults.standard.integer(forKey: "hotkeyKeyCode")).nonZero ?? UInt32(kVK_ANSI_1) }
+        get { UInt32(UserDefaults.standard.integer(forKey: "hotkeyKeyCode")).nonZero ?? UInt32(kVK_ANSI_L) }
         set { UserDefaults.standard.set(Int(newValue), forKey: "hotkeyKeyCode") }
     }
     private var currentModifiers: UInt32 {
