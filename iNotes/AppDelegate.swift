@@ -23,6 +23,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     private var shortcutWindow: NSWindow?
+    #if SPARKLE_UPDATES
+    private var updaterManager: UpdaterManager!
+    #endif
 
     private var currentKeyCode: UInt32 {
         get { UInt32(UserDefaults.standard.integer(forKey: "hotkeyKeyCode")).nonZero ?? UInt32(kVK_ANSI_L) }
@@ -52,6 +55,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if SPARKLE_UPDATES
+        updaterManager = UpdaterManager()
+        #endif
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = NSImage(named: "MenuBarIcon")
@@ -131,6 +138,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(shortcutItem)
 
         menu.addItem(NSMenuItem(title: "Change Shortcut...", action: #selector(openShortcutRecorder), keyEquivalent: ""))
+
+        #if SPARKLE_UPDATES
+        menu.addItem(NSMenuItem.separator())
+        let updateItem = NSMenuItem(title: "Check for Updates…",
+                                    action: #selector(UpdaterManager.checkForUpdates(_:)),
+                                    keyEquivalent: "")
+        updateItem.target = updaterManager
+        menu.addItem(updateItem)
+        #endif
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit iNotes", action: #selector(quitApp), keyEquivalent: "q"))
 

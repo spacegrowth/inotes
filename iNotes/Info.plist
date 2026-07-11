@@ -20,5 +20,23 @@
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+
+    <!--
+      Sparkle auto-update keys — DIRECT-DOWNLOAD BUILD ONLY. Harmless in a
+      future Mac App Store build (Sparkle won't be linked there, so these are
+      simply inert). See DISTRIBUTION.md.
+
+      DISTRIBUTION NOTE: SUFeedURL below is a PLACEHOLDER
+      (spacegrowth/inotes on GitHub). Repoint it to wherever the appcast is
+      actually hosted before shipping a real update.
+    -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/spacegrowth/inotes/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>PAH3T7Y8eL9tdQXBjIksAVFqv6xu2sv6seP8GXa8ukk=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>
