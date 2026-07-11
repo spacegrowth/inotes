@@ -41,7 +41,9 @@ struct TabBarView: View {
             }
             .buttonStyle(.plain)
             .foregroundColor(.secondary)
-            .help("New note")
+            .disabled(!store.canAddNote)
+            .opacity(store.canAddNote ? 1.0 : 0.3)
+            .help(store.canAddNote ? "New note" : "Maximum \(NotesStore.maxNotes) notes")
         }
         .padding(.horizontal, 6)
         .padding(.top, 6)

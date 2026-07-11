@@ -23,6 +23,13 @@ final class NotesStoreTests: XCTestCase {
         XCTAssertEqual(store.notes[2].title, "Note 3")
     }
 
+    func testAddNote_cappedAtMaxNotes() {
+        let store = makeStore(titles: (1...NotesStore.maxNotes).map { "N\($0)" })
+        XCTAssertFalse(store.canAddNote, "should not allow adding at the cap")
+        store.addNote() // no-op at the cap
+        XCTAssertEqual(store.notes.count, NotesStore.maxNotes, "must not exceed the cap")
+    }
+
     // MARK: - Delete
 
     func testDeleteNote_removesAndKeepsSelectionOnSurvivingNote() {

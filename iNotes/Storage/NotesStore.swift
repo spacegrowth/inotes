@@ -3,6 +3,10 @@ import Combine
 
 @MainActor
 class NotesStore: ObservableObject {
+    /// A menu-bar scratchpad, not a file manager: cap the number of tabs so
+    /// each stays visible/readable in the narrow panel. Pinned tabs count too.
+    static let maxNotes = 5
+
     @Published var notes: [Note]
     @Published var selectedIndex: Int = 0
     @Published var showToolbar: Bool {
@@ -91,7 +95,11 @@ class NotesStore: ObservableObject {
         }
     }
 
+    /// True when another tab can be added (below the cap).
+    var canAddNote: Bool { notes.count < NotesStore.maxNotes }
+
     func addNote() {
+        guard canAddNote else { return }
         let note = Note(title: "Note \(notes.count + 1)")
         notes.append(note)
         selectedIndex = notes.count - 1
