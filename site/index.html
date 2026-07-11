@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iNotes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 34rem; margin: 12vh auto; padding: 0 1.25rem; text-align: center;
+    }
+    h1 { font-size: 2.5rem; margin: 0 0 .25rem; }
+    p.tag { opacity: .7; margin-top: 0; }
+    a.dl {
+      display: inline-block; margin-top: 1.75rem; padding: .7rem 1.5rem;
+      border-radius: 10px; background: #333; color: #fff; text-decoration: none;
+      font-weight: 600;
+    }
+    @media (prefers-color-scheme: dark) { a.dl { background: #eee; color: #111; } }
+    footer { margin-top: 3rem; font-size: .85rem; opacity: .55; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <h1>iNotes</h1>
+  <p class="tag">A tiny menu-bar scratchpad for macOS.</p>
+  <!-- iNotes.dmg is fetched same-origin into this site by the Pages workflow from the latest
+       GitHub Release, so this link saves the file as "iNotes.dmg". -->
+  <a class="dl" href="iNotes.dmg" download>Download iNotes.dmg</a>
+  <footer>
+    Notarized &amp; auto-updating via Sparkle.
+    <a href="https://github.com/spacegrowth/inotes">Source on GitHub</a>
+  </footer>
+</body>
+</html>

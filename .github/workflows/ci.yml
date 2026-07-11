@@ -1,0 +1,35 @@
+name: CI
+
+# Build + test on every push/PR. Releases are NOT cut here — they are cut locally with
+# installer/release.sh <version> (Developer ID sign → notarize → staple → appcast → gh release),
+# because that needs the signing cert, the asc-notary keychain profile, and the Sparkle EdDSA key,
+# none of which live in CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: macos-15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build & test (Debug)
+        run: |
+          xcodebuild -project iNotes.xcodeproj -scheme iNotes \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            test

@@ -10,3 +10,9 @@ build/
 
 # Debug logs
 /tmp/inotes-debug.log
+
+# Release artifacts (installer/release.sh) — never committed; published to GitHub Releases
+installer/.sparkle-tools/
+/*.dmg
+iNotes-*.app.zip
+site/iNotes.dmg

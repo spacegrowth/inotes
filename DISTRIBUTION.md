@@ -25,46 +25,75 @@ on the `iNotes` target, so:
 
 Sparkle update packages are signed with an EdDSA keypair:
 
-- The **public** key is embedded in `Info.plist` as `SUPublicEDKey`.
+- The **public** key is embedded in `Info.plist` as `SUPublicEDKey`
+  (`PAH3T7Y8eL9tdQXBjIksAVFqv6xu2sv6seP8GXa8ukk=` — reused across my signed apps
+  by decision, same private key).
 - The **private** key lives only in the machine's login Keychain (service
-  `https://sparkle-project.org`, account `ed25519`) — it is never written to
-  disk or committed. It's managed by Sparkle's own `generate_keys` /
-  `sign_update` tools, which ship as prebuilt binaries inside the resolved
-  SPM package artifact bundle, e.g.:
+  `https://sparkle-project.org`, account `ed25519`) — never written to disk
+  or committed. `installer/release.sh` uses Sparkle's `generate_appcast`,
+  which finds this key in the keychain automatically and EdDSA-signs each
+  archive. **Whoever cuts releases needs Keychain access to this same private
+  key.**
 
-  ```
-  ~/Library/Developer/Xcode/DerivedData/iNotes-*/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
-  ~/Library/Developer/Xcode/DerivedData/iNotes-*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update
-  ```
+### Appcast hosting (GitHub Pages)
 
-  Run `generate_keys` once per machine/account that will cut releases; if a
-  key already exists in the keychain it reuses it and just reprints the
-  public half. **Whoever cuts releases needs Keychain access to this same
-  private key** (or generates their own and updates `SUPublicEDKey` to
-  match) — it does not travel with the repo.
-
-### Appcast hosting
-
-`appcast.xml` at the repo root is a template (one example `<item>`).
-`SUFeedURL` in `Info.plist` currently points at a **placeholder**:
+The feed is served from **GitHub Pages** at:
 
 ```
-https://raw.githubusercontent.com/spacegrowth/inotes/main/appcast.xml
+https://spacegrowth.github.io/inotes/appcast.xml
 ```
 
-Repoint `SUFeedURL` to wherever the appcast actually gets hosted (a real
-raw-GitHub URL once this repo's default branch has a real `appcast.xml`, a
-different host, S3, etc.) before shipping a real update to users.
+which is `SUFeedURL` in `iNotes/Info.plist`. The feed's source of truth is
+`site/appcast.xml`; `.github/workflows/pages.yml` deploys everything under
+`site/` to Pages on every push to `main`, and also fetches the latest
+`iNotes.dmg` from GitHub Releases into the site so the download link on
+`site/index.html` serves same-origin.
+
+`site/appcast.xml` starts as an empty-but-valid feed ("You're up to date").
+`installer/release.sh` overwrites it via `generate_appcast` on each release —
+do not hand-edit `<item>` entries.
 
 ### Cutting a release
 
-`scripts/release.sh` is a documented skeleton (not wired to run
-unattended) for the full release flow: archive a Developer-ID-signed
-`.app`, zip it, `sign_update` the zip with the EdDSA key above, notarize +
-staple via `xcrun notarytool`/`stapler`, then update `appcast.xml`'s
-`<item>`. Every spot needing your Apple Developer ID identity, notarytool
-keychain profile, or the real release host is marked `# TODO(user)` in that
-script — fill those in before running it for a real release.
+Releases are cut **locally** with:
+
+```
+installer/release.sh <version>     # e.g. installer/release.sh 1.8
+```
+
+The release pipeline, in order:
+
+1. Fetches Sparkle's CLI tools (`generate_appcast`) into
+   `installer/.sparkle-tools/` (cached, gitignored).
+2. Stamps `<version>` into `iNotes/Info.plist`
+   (`CFBundleShortVersionString` + `CFBundleVersion`).
+3. `xcodegen generate` + `xcodebuild -configuration Release` with the
+   Developer ID identity and hardened runtime.
+4. **Re-signs the embedded Sparkle framework inside-out.** xcodebuild signs
+   the app and framework top level with our Developer ID but leaves Sparkle's
+   nested helpers (`XPCServices/*.xpc`, `Updater.app`, `Autoupdate`) with
+   Sparkle's own **ad-hoc** signatures. `codesign --deep --strict` still
+   passes on those, but the **notary service rejects ad-hoc nested code**, so
+   the script re-signs them deepest-first with our identity + `--options
+   runtime --timestamp`, then re-seals the framework and the app.
+5. Zips the app, notarizes via `xcrun notarytool submit --keychain-profile
+   asc-notary --wait`, staples, and re-zips as `iNotes-<ver>.app.zip` (the
+   Sparkle update payload).
+6. Builds `iNotes.dmg` via `installer/build-dmg.sh`, notarizes + staples it.
+7. `generate_appcast` (EdDSA-signs) → copies to `site/appcast.xml`.
+8. `gh release create v<ver>` with the DMG + app zip as assets.
+9. Commits `site/appcast.xml` + `iNotes/Info.plist` and pushes `main` (Pages
+   redeploys, serving the new feed + DMG).
+
+Prerequisites (all one-time, user-side, **reused across my signed apps**):
+
+- Developer ID Application cert in the login keychain (team `87CWAR5GNP`).
+- notarytool profile **`asc-notary`** (`xcrun notarytool store-credentials`).
+- The Sparkle EdDSA private key in the login keychain (above).
+
+CI (`.github/workflows/ci.yml`) only builds + tests on push/PR; it does **not**
+cut releases (the signing cert, `asc-notary` profile, and EdDSA key don't live
+in CI).
 
 ## Path 2: Mac App Store (future, sandboxed)
 

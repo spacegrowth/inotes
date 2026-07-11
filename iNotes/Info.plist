@@ -26,12 +26,12 @@
       future Mac App Store build (Sparkle won't be linked there, so these are
       simply inert). See DISTRIBUTION.md.
 
-      DISTRIBUTION NOTE: SUFeedURL below is a PLACEHOLDER
-      (spacegrowth/inotes on GitHub). Repoint it to wherever the appcast is
-      actually hosted before shipping a real update.
+      SUFeedURL is served from GitHub Pages (site/appcast.xml deploys there via
+      .github/workflows/pages.yml). installer/release.sh regenerates that feed
+      with generate_appcast on each release.
     -->
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/spacegrowth/inotes/main/appcast.xml</string>
+    <string>https://spacegrowth.github.io/inotes/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>PAH3T7Y8eL9tdQXBjIksAVFqv6xu2sv6seP8GXa8ukk=</string>
     <key>SUEnableAutomaticChecks</key>

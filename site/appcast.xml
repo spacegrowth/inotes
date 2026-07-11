@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iNotes Sparkle appcast — served from GitHub Pages at
+  https://spacegrowth.github.io/inotes/appcast.xml (SUFeedURL in iNotes/Info.plist).
+
+  This starts as an EMPTY but VALID feed: with no <item>, Sparkle reports "You're up to date"
+  (no error). installer/release.sh runs Sparkle's generate_appcast, which OVERWRITES this file
+  with EdDSA-signed <item> entries whose enclosures point at the GitHub Release assets. Do not
+  hand-edit items here — let generate_appcast produce them.
+-->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>iNotes Updates</title>
+    <link>https://spacegrowth.github.io/inotes/appcast.xml</link>
+    <description>Auto-update feed for iNotes.</description>
+    <language>en</language>
+  </channel>
+</rss>
