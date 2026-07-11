@@ -317,4 +317,47 @@ final class TextEditorLogicTests: XCTestCase {
         XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 15), 3)
         XCTAssertEqual(TextEditorLogic.headingLevel(forFontSize: 13), 0)
     }
+
+    // MARK: - Status footer: word / char counts
+
+    func testWordCount_empty() {
+        XCTAssertEqual(TextEditorLogic.wordCount(""), 0)
+    }
+
+    func testWordCount_whitespaceOnly() {
+        XCTAssertEqual(TextEditorLogic.wordCount("   \n\t  \n"), 0)
+    }
+
+    func testWordCount_collapsesMultipleSpacesAndNewlines() {
+        XCTAssertEqual(TextEditorLogic.wordCount("one   two\n\nthree\tfour"), 4)
+    }
+
+    func testWordCount_singleWord() {
+        XCTAssertEqual(TextEditorLogic.wordCount("hello"), 1)
+    }
+
+    func testWordCount_unicodeWords() {
+        // Emoji and accented/CJK characters each count as their own word when
+        // whitespace-separated, same as any other token.
+        XCTAssertEqual(TextEditorLogic.wordCount("café 日本語 🎉 naïve"), 4)
+    }
+
+    func testCharCount_empty() {
+        XCTAssertEqual(TextEditorLogic.charCount(""), 0)
+    }
+
+    func testCharCount_whitespaceOnly() {
+        XCTAssertEqual(TextEditorLogic.charCount("   "), 3)
+    }
+
+    func testCharCount_countsGraphemeClusters() {
+        XCTAssertEqual(TextEditorLogic.charCount("hello"), 5)
+        // A combined emoji (family: man, woman, girl, boy) is one grapheme
+        // cluster despite being multiple unicode scalars.
+        XCTAssertEqual(TextEditorLogic.charCount("👨‍👩‍👧‍👦"), 1)
+    }
+
+    func testCharCount_includesNewlinesAndSpaces() {
+        XCTAssertEqual(TextEditorLogic.charCount("a b\nc"), 5)
+    }
 }

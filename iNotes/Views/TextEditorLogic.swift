@@ -295,6 +295,22 @@ enum TextEditorLogic {
         return ranges
     }
 
+    // MARK: - Status footer: word / character counts
+
+    /// Number of whitespace-separated words in `text`. Runs of whitespace
+    /// (spaces, tabs, newlines) collapse, so multiple spaces or blank lines
+    /// between words don't inflate the count; an empty or whitespace-only
+    /// string is 0.
+    static func wordCount(_ text: String) -> Int {
+        text.split(whereSeparator: { $0.isWhitespace }).count
+    }
+
+    /// Total character count of `text` (Swift grapheme clusters, so combined
+    /// unicode characters like emoji or accented letters count as one).
+    static func charCount(_ text: String) -> Int {
+        text.count
+    }
+
     // MARK: - Cmd+B/I/U wrap/unwrap
 
     /// Result of toggling a wrap marker around a selection.

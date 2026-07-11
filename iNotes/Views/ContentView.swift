@@ -30,6 +30,12 @@ struct ContentView: View {
                 noteID: store.notes[store.selectedIndex].id,
                 editorState: editorState
             )
+            Divider()
+            StatusFooterView(
+                text: store.notes[store.selectedIndex].text,
+                lastModified: store.notes[store.selectedIndex].lastModified
+            )
+            .id(store.notes[store.selectedIndex].id)
         }
         .background(.background)
     }

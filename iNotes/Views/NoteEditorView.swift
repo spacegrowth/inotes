@@ -100,9 +100,23 @@ class RichNoteTextView: NSTextView {
         case "z":
             if hasShift { undoManager?.redo() } else { undoManager?.undo() }
             return true
+        case "f":
+            showFindBar()
+            return true
         default:
             return super.performKeyEquivalent(with: event)
         }
+    }
+
+    // MARK: - Cmd+F: find bar
+
+    /// Show the built-in `NSTextFinder` find bar. `performTextFinderAction`
+    /// dispatches purely on `sender.tag`, so a throwaway menu item carrying
+    /// the "show find interface" tag is enough to trigger it programmatically.
+    private func showFindBar() {
+        let item = NSMenuItem()
+        item.tag = NSTextFinder.Action.showFindInterface.rawValue
+        performTextFinderAction(item)
     }
 
     // MARK: - Mouse: checkbox toggle
@@ -250,6 +264,8 @@ struct NoteEditorView: NSViewRepresentable {
         textView.allowsUndo = true
         textView.isEditable = true
         textView.isSelectable = true
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.drawsBackground = false
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.isAutomaticQuoteSubstitutionEnabled = false
