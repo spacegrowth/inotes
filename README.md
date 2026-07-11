@@ -6,8 +6,6 @@
 
 A minimal macOS menu-bar **markdown scratchpad**. Lives in your menu bar, opens with a keystroke, saves as plain markdown.
 
-**This app was developed entirely by Claude (Anthropic's AI), directed by a human over a series of conversations.**
-
 ![macOS](https://img.shields.io/badge/macOS-14.0+-black)
 ![tests](https://img.shields.io/badge/tests-103_passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependency-Sparkle-blue)
