@@ -10,6 +10,10 @@ A minimal macOS menu-bar **markdown scratchpad**. Lives in your menu bar, opens 
 ![tests](https://img.shields.io/badge/tests-103_passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependency-Sparkle-blue)
 
+### [⬇ Download iNotes.dmg](https://github.com/spacegrowth/inotes/releases/latest/download/iNotes.dmg)
+
+*Signed & notarized · auto-updates via Sparkle*
+
 </div>
 
 ## Features
@@ -32,11 +36,9 @@ A minimal macOS menu-bar **markdown scratchpad**. Lives in your menu bar, opens 
 ## Install
 
 ### Download
-1. Grab the latest `iNotes.zip` from [Releases](../../releases)
-2. Unzip and drag `iNotes.app` into `/Applications`
-3. First launch: macOS may warn about an unidentified developer — right-click the app → **Open** to bypass
+**[⬇ Download the latest `iNotes.dmg`](https://github.com/spacegrowth/inotes/releases/latest/download/iNotes.dmg)**, open it, and drag **iNotes** into **Applications**.
 
-Once installed, the app keeps itself up to date via Sparkle.
+The app is signed with a Developer ID and **notarized by Apple**, so it opens with no Gatekeeper warning — and keeps itself up to date automatically via Sparkle. (Older releases are on the [Releases page](../../releases).)
 
 ### Build from source
 ```bash
