@@ -175,8 +175,10 @@ final class MarkerLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     // MARK: - Checkbox box geometry (shared by drawing + hover cursor rect)
 
-    /// Font the `☐`/`☑` box is drawn at — larger than the text so it reads crisp.
-    static let checkboxBoxFont = NSFont.systemFont(ofSize: 16)
+    /// Font the `☐`/`☑` box is drawn at — larger than the text so it reads
+    /// crisp, scaling with the base editor font size (keeps the default
+    /// 13→16 relationship: base + 3).
+    static var checkboxBoxFont: NSFont { NSFont.systemFont(ofSize: AppSettings.baseFontSize + 3) }
 
     /// The rect (in text-container coordinates, no container origin applied) the
     /// checkbox box glyph is painted into: anchored at the box cell's left edge

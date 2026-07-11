@@ -34,6 +34,22 @@ struct FormattingToolbar: View {
                 editorState.toggleTodo()
             }
 
+            Divider()
+                .frame(height: 16)
+                .padding(.horizontal, 4)
+
+            fontSizeButton("A−", enabled: editorState.fontSize > AppSettings.fontSizeRange.lowerBound) {
+                editorState.decreaseFontSize()
+            }
+            Text("\(Int(editorState.fontSize))")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.secondary)
+                .frame(minWidth: 14)
+                .help("Editor font size")
+            fontSizeButton("A+", enabled: editorState.fontSize < AppSettings.fontSizeRange.upperBound) {
+                editorState.increaseFontSize()
+            }
+
             Spacer()
         }
         .padding(.horizontal, 8)
@@ -56,6 +72,19 @@ struct FormattingToolbar: View {
             .cornerRadius(4)
             .contentShape(Rectangle())
             .onTapGesture {
+                action()
+                refocusEditor()
+            }
+    }
+
+    private func fontSizeButton(_ label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(enabled ? .secondary : Color.secondary.opacity(0.35))
+            .frame(width: 20, height: 24)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard enabled else { return }
                 action()
                 refocusEditor()
             }

@@ -49,7 +49,7 @@ enum MarkdownStyler {
         // Heading
         let hLevel = TextEditorLogic.headingLevel(ofLine: line)
         if hLevel > 0 {
-            let size = TextEditorLogic.headingSizes[hLevel - 1]
+            let size = TextEditorLogic.headingSizes(forBase: AppSettings.baseFontSize)[hLevel - 1]
             ts.addAttribute(.font, value: defaultBoldFont(size: size), range: lineRange)
             let markerLen = TextEditorLogic.headingMarkerLength(level: hLevel)
             ts.addAttribute(.foregroundColor, value: markerColor,

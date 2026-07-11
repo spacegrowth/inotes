@@ -26,6 +26,29 @@ final class TextEditorLogicTests: XCTestCase {
         XCTAssertEqual(TextEditorLogic.headingMarkerLength(level: 3), 4) // "### "
     }
 
+    // MARK: - Heading sizes (relative to base font size)
+
+    func testHeadingSizes_atDefaultBase_matchesOriginalFixedSizes() {
+        // The delta-based derivation must reproduce the app's original fixed
+        // sizes (22/18/15) at the default base of 13, so existing notes don't
+        // visibly change size on upgrade.
+        XCTAssertEqual(TextEditorLogic.headingSizes(forBase: 13), [22, 18, 15])
+    }
+
+    func testHeadingSizes_scaleProportionallyWithBase() {
+        XCTAssertEqual(TextEditorLogic.headingSizes(forBase: 10), [19, 15, 12])
+        XCTAssertEqual(TextEditorLogic.headingSizes(forBase: 24), [33, 29, 26])
+    }
+
+    func testHeadingSizes_alwaysDescendingH1ToH3() {
+        for base: CGFloat in stride(from: 10, through: 24, by: 1) {
+            let sizes = TextEditorLogic.headingSizes(forBase: base)
+            XCTAssertEqual(sizes.count, 3)
+            XCTAssertGreaterThan(sizes[0], sizes[1], "h1 must stay larger than h2 at base \(base)")
+            XCTAssertGreaterThan(sizes[1], sizes[2], "h2 must stay larger than h3 at base \(base)")
+        }
+    }
+
     // MARK: - Indentation
 
     func testLeadingSpaces() {

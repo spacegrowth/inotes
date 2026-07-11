@@ -20,6 +20,30 @@ class EditorState: ObservableObject {
     @Published var currentHeading: HeadingLevel = .body
     @Published var isBulletList = false
     @Published var isTodoItem = false
+    @Published var fontSize: CGFloat = AppSettings.baseFontSize
+
+    // MARK: - Font size (A− / A+)
+
+    func increaseFontSize() { setFontSize(fontSize + 1) }
+    func decreaseFontSize() { setFontSize(fontSize - 1) }
+
+    /// Persist `newValue` (clamped) as the base font size and immediately
+    /// restyle the open note so body text, headings, and the checkbox box
+    /// all rescale live.
+    func setFontSize(_ newValue: CGFloat) {
+        let clamped = AppSettings.clamp(newValue)
+        guard clamped != fontSize else { return }
+        AppSettings.baseFontSize = clamped
+        fontSize = clamped
+        restyleCurrentNote()
+    }
+
+    private func restyleCurrentNote() {
+        guard let textView = textView, let ts = textView.textStorage else { return }
+        MarkdownStyler.apply(to: ts)
+        textView.typingAttributes = NoteEditorView.defaultAttributes
+        textView.needsDisplay = true
+    }
 
     // MARK: - Selection → toolbar state
 

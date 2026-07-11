@@ -14,8 +14,13 @@ enum TextEditorLogic {
     /// Number of spaces that make up one indentation level in the markdown source.
     static let indentUnit = 2
 
-    /// Heading font point sizes for levels 1...3 (index 0 == h1).
-    static let headingSizes: [CGFloat] = [22, 18, 15]
+    /// Heading font point sizes for levels 1...3 (index 0 == h1), derived from
+    /// `base` so `#`/`##`/`###` stay proportionally larger as the base editor
+    /// font size changes. The deltas (+9/+5/+2) reproduce the app's original
+    /// fixed sizes (22/18/15) at the default base of 13.
+    static func headingSizes(forBase base: CGFloat) -> [CGFloat] {
+        [base + 9, base + 5, base + 2]
+    }
 
     // MARK: - Line: headings
 

@@ -7,14 +7,16 @@ extension Notification.Name {
     static let iNotesFlushPendingEncode = Notification.Name("iNotesFlushPendingEncode")
 }
 
-// Default font helpers (Menlo monospace base).
-func defaultFont(size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSFont {
+// Default font helpers (Menlo monospace base). The default `size` reads the
+// persisted base font size, so every no-arg call site (typing attributes,
+// body text, the bullet glyph, …) picks up size changes automatically.
+func defaultFont(size: CGFloat = AppSettings.baseFontSize, weight: NSFont.Weight = .regular) -> NSFont {
     NSFont(name: "Menlo-Regular", size: size)
         ?? NSFont(name: "Menlo", size: size)
         ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
 }
 
-func defaultBoldFont(size: CGFloat = 13) -> NSFont {
+func defaultBoldFont(size: CGFloat = AppSettings.baseFontSize) -> NSFont {
     NSFont(name: "Menlo-Bold", size: size)
         ?? NSFont.monospacedSystemFont(ofSize: size, weight: .bold)
 }
