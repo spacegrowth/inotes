@@ -10,7 +10,7 @@ A minimal macOS menu-bar **markdown scratchpad**. Lives in your menu bar, opens 
 ![tests](https://img.shields.io/badge/tests-103_passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependency-Sparkle-blue)
 
-### [⬇ Download iNotes.dmg](https://github.com/spacegrowth/inotes/releases/latest/download/iNotes.dmg)
+### [⬇ Download iNotes](https://spacegrowth.github.io/inotes/)
 
 *Signed & notarized · auto-updates via Sparkle*
 
@@ -36,9 +36,9 @@ A minimal macOS menu-bar **markdown scratchpad**. Lives in your menu bar, opens 
 ## Install
 
 ### Download
-**[⬇ Download the latest `iNotes.dmg`](https://github.com/spacegrowth/inotes/releases/latest/download/iNotes.dmg)**, open it, and drag **iNotes** into **Applications**.
+**[⬇ Get iNotes from the download page](https://spacegrowth.github.io/inotes/)** — click **Download iNotes.dmg**, open it, and drag **iNotes** into **Applications**.
 
-The app is signed with a Developer ID and **notarized by Apple**, so it opens with no Gatekeeper warning — and keeps itself up to date automatically via Sparkle. (Older releases are on the [Releases page](../../releases).)
+The app is signed with a Developer ID and **notarized by Apple**, so it opens with no Gatekeeper warning — and keeps itself up to date automatically via Sparkle. (Direct asset + older releases are on the [Releases page](../../releases).)
 
 ### Build from source
 ```bash
