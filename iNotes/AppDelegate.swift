@@ -1,8 +1,14 @@
 import Cocoa
 import SwiftUI
 import Carbon.HIToolbox
+import os
 
 private let kHotKeyNotification = Notification.Name("iNotesHotKeyPressed")
+
+/// Launch/hotkey diagnostics. This app has no window and no Dock icon, so a
+/// failure at launch is otherwise completely invisible. Read with:
+///   log show --predicate 'subsystem == "com.inotes.inotes"' --last 10m
+let iNotesLog = Logger(subsystem: "com.inotes.inotes", category: "launch")
 
 private func hotKeyHandler(_: EventHandlerCallRef?, _: EventRef?, _: UnsafeMutableRawPointer?) -> OSStatus {
     NotificationCenter.default.post(name: kHotKeyNotification, object: nil)
@@ -55,18 +61,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        iNotesLog.info("applicationDidFinishLaunching begin")
+
         #if SPARKLE_UPDATES
         updaterManager = UpdaterManager()
         #endif
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // Stable autosave name so the item's persisted position/visibility is
+        // predictable and clearable, rather than keyed off the bundle id.
+        statusItem.autosaveName = "iNotesStatusItem"
+        // A stray Cmd+drag off the menu bar persists isVisible=false in prefs,
+        // which survives reinstalling the app. Never start up hidden.
+        statusItem.isVisible = true
+
         if let button = statusItem.button {
-            button.image = NSImage(named: "MenuBarIcon")
-            button.image?.isTemplate = true
+            let icon = NSImage(named: "MenuBarIcon")
+            icon?.isTemplate = true
+            button.image = icon
+            // With squareLength, a nil image yields a fixed-size button that is
+            // clickable but draws nothing — an invisible menu bar item. Fall back
+            // to text so the item can never be present-but-unseeable.
+            if icon == nil {
+                button.title = "iN"
+                iNotesLog.error("MenuBarIcon failed to load; using text fallback")
+            }
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        } else {
+            iNotesLog.error("status item has no button; menu bar icon unavailable")
         }
+        iNotesLog.info("status item created (visible=\(self.statusItem.isVisible, privacy: .public))")
 
         let initialSize = savedPanelSize
         let hostingView = NSHostingController(rootView: ContentView(store: store))
@@ -103,6 +129,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         installCarbonHandler()
         registerHotKey(keyCode: currentKeyCode, modifiers: currentModifiers)
+
+        iNotesLog.info("applicationDidFinishLaunching complete (hotkey=\(self.hotKeyIsRegistered ? "registered" : "FAILED", privacy: .public))")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -198,7 +226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
-        InstallEventHandler(
+        let status = InstallEventHandler(
             GetApplicationEventTarget(),
             hotKeyHandler,
             1,
@@ -206,11 +234,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             nil,
             &handlerRef
         )
+        if status != noErr {
+            iNotesLog.error("InstallEventHandler failed (OSStatus \(status, privacy: .public)); global hotkey will not fire")
+        }
     }
 
     private func registerHotKey(keyCode: UInt32, modifiers: UInt32) {
         var hotKeyID = EventHotKeyID(signature: OSType(0x494E4F54), id: 1)
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             keyCode,
             modifiers,
             hotKeyID,
@@ -218,7 +249,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             0,
             &hotKeyRef
         )
+        if status != noErr || hotKeyRef == nil {
+            // Most commonly the shortcut is already claimed by another app, in
+            // which case the owner wins and ours silently never fires.
+            hotKeyRef = nil
+            iNotesLog.error("""
+                RegisterEventHotKey failed (OSStatus \(status, privacy: .public)) for \
+                keyCode=\(keyCode, privacy: .public) modifiers=\(modifiers, privacy: .public) — \
+                shortcut is likely already taken by another app; pick another in Change Shortcut…
+                """)
+        } else {
+            iNotesLog.info("hotkey registered (keyCode=\(keyCode, privacy: .public) modifiers=\(modifiers, privacy: .public))")
+        }
     }
+
+    /// Whether the global hotkey is actually live, for diagnostics and UI.
+    private var hotKeyIsRegistered: Bool { hotKeyRef != nil }
 
     private func unregisterHotKey() {
         if let ref = hotKeyRef {
