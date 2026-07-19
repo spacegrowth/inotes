@@ -38,6 +38,44 @@ DMG="$ROOT/iNotes.dmg"
 
 rm -rf "$DIST"; mkdir -p "$DIST"
 
+# 0a) Preflight the credentials BEFORE spending several minutes on build + sign +
+#     inside-out Sparkle re-sign. Every check here is one the pipeline would
+#     otherwise fail on much later, after that work is already thrown away.
+#
+#     Note on the notary profile: notarytool stores its credential where the
+#     `security` CLI does NOT surface it — `security find-generic-password -s
+#     com.apple.gke.notary.tool` reports "not found" even when the profile is
+#     present and working. Ask notarytool itself; that is the only reliable check.
+echo "==> Preflight: signing identity, notary profile, Sparkle key"
+
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "$APP_IDENTITY"; then
+  echo "ERROR: Developer ID identity not found in the keychain:" >&2
+  echo "         $APP_IDENTITY" >&2
+  echo "       Install the Developer ID Application cert for team ${TEAM_ID}," >&2
+  echo "       and make sure the login keychain is unlocked." >&2
+  exit 1
+fi
+
+if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+  echo "ERROR: notarytool profile \"${NOTARY_PROFILE}\" is unusable." >&2
+  echo "       Most often the login keychain is locked (unlock it and retry) —" >&2
+  echo "       this profile does not normally need recreating. If it is genuinely" >&2
+  echo "       gone, recreate it once with:" >&2
+  echo "         xcrun notarytool store-credentials ${NOTARY_PROFILE} \\" >&2
+  echo "           --apple-id <apple-id-email> --team-id ${TEAM_ID}" >&2
+  exit 1
+fi
+
+if ! security find-generic-password -s "https://sparkle-project.org" -a ed25519 >/dev/null 2>&1; then
+  echo "ERROR: Sparkle EdDSA private key not found in the login keychain" >&2
+  echo "       (service https://sparkle-project.org, account ed25519)." >&2
+  echo "       generate_appcast needs it to sign the feed; without it the release" >&2
+  echo "       would build and notarize fine, then fail at the appcast step." >&2
+  exit 1
+fi
+
+echo "    identity + notary profile + Sparkle key OK"
+
 # 0) Fetch Sparkle CLI tools (generate_appcast/sign_update) once, cached + gitignored.
 if [ ! -x "$TOOLS/bin/generate_appcast" ]; then
   echo "==> Fetching Sparkle ${SPARKLE_VER} CLI tools"
