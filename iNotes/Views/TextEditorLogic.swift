@@ -231,6 +231,13 @@ enum TextEditorLogic {
         var closeMarkerRange: NSRange {
             NSRange(location: NSMaxRange(fullRange) - markerLength, length: markerLength)
         }
+
+        /// The same span shifted by `delta` (line-relative → document offsets).
+        func offset(by delta: Int) -> InlineSpan {
+            InlineSpan(kind: kind,
+                       fullRange: NSRange(location: fullRange.location + delta, length: fullRange.length),
+                       markerLength: markerLength)
+        }
     }
 
     // Compiled once. Character classes exclude newlines so spans never cross lines.

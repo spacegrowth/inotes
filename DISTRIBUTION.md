@@ -127,16 +127,17 @@ entitlement). To produce a Sparkle-free MAS build:
    may require a different approach (e.g. a system-wide keyboard shortcut
    registered via a different API, or dropping the global hotkey in favor of
    only the status-bar-item entry point).
-4. **`notes.json` moves into the app's sandbox container.** `NotesStore`
-   currently writes to
-   `~/Library/Application Support/iNotes/notes.json` (outside any sandbox
-   container). Under App Sandbox this path is not directly writable — the
-   equivalent container path becomes something like
-   `~/Library/Containers/com.inotes.inotes/Data/Library/Application
-   Support/iNotes/notes.json`. Existing direct-download users' notes will
-   NOT automatically appear in a MAS install (different container, no
-   migration path) — this needs a deliberate decision (one-time import
-   tool, or treat MAS as a fresh install) before shipping.
+4. **The notes folder moves into the app's sandbox container.** `NotesStore`
+   stores notes as `~/.inotes/*.md` (see `NotesFolder`). Under App Sandbox
+   the home directory resolves to the container, so the same code lands in
+   something like `~/Library/Containers/com.inotes.inotes/Data/.inotes/` —
+   which also means outside tools (editors, scripts, Claude sessions) can no
+   longer reach the notes at the documented path, and the one-time migration
+   from the legacy `~/Library/Application Support/iNotes/notes.json` cannot
+   see the real file. Existing direct-download users' notes will NOT
+   automatically appear in a MAS install — this needs a deliberate decision
+   (user-picked folder via security-scoped bookmark, one-time import, or
+   treat MAS as a fresh install) before shipping.
 
 None of the above is implemented in this change — Path 1 (direct + Sparkle)
 is fully working and this section is scoped only to flag what changes when

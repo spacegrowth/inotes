@@ -12,32 +12,43 @@ enum MarkdownStyler {
     static let checkedColor = NSColor.gray
     static let baseColor = NSColor.black
 
-    /// Restyle the whole document. Cheap for scratchpad-sized notes; called
-    /// synchronously after each change.
-    static func apply(to textStorage: NSTextStorage) {
+    /// Restyle the paragraphs touched by `range` (the whole document when nil).
+    /// Every style is line-local — inline spans never cross a newline — so
+    /// restyling just the edited lines gives exactly the full-document result,
+    /// and keeps typing cost independent of note length. Restyling everything
+    /// would also invalidate layout for the whole note on every keystroke.
+    static func apply(to textStorage: NSTextStorage, in range: NSRange? = nil) {
         let ns = textStorage.string as NSString
-        let full = NSRange(location: 0, length: ns.length)
+        let target: NSRange
+        if let range {
+            // One extra character so the line starting right after the edit is
+            // included too: an inserted "\n" belongs to the line it ends, and
+            // the line it splits off must be restyled as well.
+            let location = min(range.location, ns.length)
+            let clamped = NSRange(location: location, length: min(range.length + 1, ns.length - location))
+            target = ns.paragraphRange(for: clamped)
+        } else {
+            target = NSRange(location: 0, length: ns.length)
+        }
 
         textStorage.beginEditing()
         defer { textStorage.endEditing() }
 
-        // 1. Reset every character to the plain base style.
+        // 1. Reset to the plain base style.
         textStorage.setAttributes([
             .font: defaultFont(),
             .foregroundColor: baseColor
-        ], range: full)
+        ], range: target)
 
-        guard ns.length > 0 else { return }
+        guard target.length > 0 else { return }
 
-        // 2. Line pass — headings, checkboxes, bullets.
-        ns.enumerateSubstrings(in: full, options: .byParagraphs) { sub, subRange, _, _ in
+        // 2. Per line: headings/checkboxes/bullets, then bold/italic/code.
+        ns.enumerateSubstrings(in: target, options: .byParagraphs) { sub, subRange, _, _ in
             guard let line = sub else { return }
             styleLine(line, at: subRange.location, in: textStorage)
-        }
-
-        // 3. Inline pass — bold / italic / code across the whole document.
-        for span in TextEditorLogic.inlineSpans(in: ns as String) {
-            styleInline(span, in: textStorage)
+            for span in TextEditorLogic.inlineSpans(in: line) {
+                styleInline(span.offset(by: subRange.location), in: textStorage)
+            }
         }
     }
 
