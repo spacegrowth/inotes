@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Carbon.HIToolbox
 
 /// Posted (synchronously) when the app is about to terminate so the editor
 /// Coordinator can flush its pending debounced save before `store.save()`.
@@ -86,23 +87,38 @@ class RichNoteTextView: NSTextView {
         return rect
     }
 
-    // MARK: - Key handling (Cmd+B/I/U, undo/redo)
+    // MARK: - Key handling (formatting shortcuts, undo/redo)
 
+    /// Every toolbar action has a shortcut (shown in its tooltip). Digits,
+    /// `=`/`-` are matched by key code so they work on any keyboard layout
+    /// and with Shift held; letters by character.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.modifierFlags.contains(.command),
-              let chars = event.charactersIgnoringModifiers?.lowercased() else {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard mods.contains(.command), !mods.contains(.control), !mods.contains(.option),
+              let editorState else {
             return super.performKeyEquivalent(with: event)
         }
-        let hasShift = event.modifierFlags.contains(.shift)
+        let hasShift = mods.contains(.shift)
 
-        switch chars {
-        case "b": editorState?.toggleBold(); return true
-        case "i": editorState?.toggleItalic(); return true
-        case "u": editorState?.toggleUnderline(); return true
-        case "z":
+        switch (Int(event.keyCode), hasShift) {
+        case (kVK_ANSI_1, false): editorState.toggleHeading(.h1); return true
+        case (kVK_ANSI_2, false): editorState.toggleHeading(.h2); return true
+        case (kVK_ANSI_3, false): editorState.toggleHeading(.h3); return true
+        case (kVK_ANSI_8, true): editorState.toggleBulletList(); return true
+        case (kVK_ANSI_9, true): editorState.toggleTodo(); return true
+        case (kVK_ANSI_Equal, _): editorState.increaseFontSize(); return true
+        case (kVK_ANSI_Minus, false): editorState.decreaseFontSize(); return true
+        default: break
+        }
+
+        switch (event.charactersIgnoringModifiers?.lowercased(), hasShift) {
+        case ("b", false): editorState.toggleBold(); return true
+        case ("i", false): editorState.toggleItalic(); return true
+        case ("u", false): editorState.toggleUnderline(); return true
+        case ("z", _):
             if hasShift { undoManager?.redo() } else { undoManager?.undo() }
             return true
-        case "f":
+        case ("f", false):
             showFindBar()
             return true
         default:
@@ -277,6 +293,7 @@ struct NoteEditorView: NSViewRepresentable {
         textView.insertionPointColor = .black
         textView.typingAttributes = Self.defaultAttributes
         textView.delegate = context.coordinator
+        textView.textStorage?.delegate = context.coordinator
 
         loadText(into: textView)
         context.coordinator.currentNoteID = noteID
@@ -300,6 +317,19 @@ struct NoteEditorView: NSViewRepresentable {
             context.coordinator.isUpdating = false
             editorState.textView = textView
             editorState.updateFromSelection()
+        } else if !context.coordinator.hasPendingEdit, textView.string != text {
+            // Same note, new text from the store: it was edited outside the app
+            // (see `NotesStore.reloadFromDisk`). Show it, keeping the caret
+            // where it was as far as the new text allows.
+            let selection = textView.selectedRange()
+            context.coordinator.isUpdating = true
+            loadText(into: textView)
+            let location = min(selection.location, (textView.string as NSString).length)
+            textView.setSelectedRange(NSRange(location: location, length: 0))
+            // Old undo steps refer to ranges in the replaced text.
+            textView.undoManager?.removeAllActions()
+            context.coordinator.isUpdating = false
+            editorState.updateFromSelection()
         }
     }
 
@@ -309,13 +339,15 @@ struct NoteEditorView: NSViewRepresentable {
         if let ts = textView.textStorage {
             MarkdownStyler.apply(to: ts)
         }
+        // Everything was just styled; don't restyle the load again on the next keystroke.
+        (textView.textStorage?.delegate as? Coordinator)?.pendingStyleRange = nil
     }
 
     static var defaultAttributes: [NSAttributedString.Key: Any] {
         [.font: defaultFont(), .foregroundColor: NSColor.black]
     }
 
-    class Coordinator: NSObject, NSTextViewDelegate {
+    class Coordinator: NSObject, NSTextViewDelegate, NSTextStorageDelegate {
         var parent: NoteEditorView
         var currentNoteID: UUID?
         var isUpdating = false
@@ -330,6 +362,14 @@ struct NoteEditorView: NSViewRepresentable {
         private var saveTimer: Timer?
         private weak var pendingTextView: NSTextView?
         private let saveDelay: TimeInterval = 0.3
+
+        /// Characters edited since the last restyle, in current coordinates.
+        /// Only these lines get restyled, so typing cost doesn't grow with
+        /// note length.
+        var pendingStyleRange: NSRange?
+
+        /// True while typed text has not reached the store yet.
+        var hasPendingEdit: Bool { pendingTextView != nil }
 
         init(_ parent: NoteEditorView) {
             self.parent = parent
@@ -350,9 +390,10 @@ struct NoteEditorView: NSViewRepresentable {
             guard !isUpdating,
                   let textView = notification.object as? NSTextView else { return }
 
-            // Live-restyle the (already-updated) source on every edit.
+            // Live-restyle the lines this edit touched.
             if let ts = textView.textStorage {
-                MarkdownStyler.apply(to: ts)
+                MarkdownStyler.apply(to: ts, in: pendingStyleRange ?? NSRange(location: 0, length: ts.length))
+                pendingStyleRange = nil
             }
             textView.typingAttributes = NoteEditorView.defaultAttributes
 
@@ -379,6 +420,25 @@ struct NoteEditorView: NSViewRepresentable {
             } else {
                 binding?.wrappedValue = value
             }
+        }
+
+        func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                         range editedRange: NSRange, changeInLength delta: Int) {
+            guard editedMask.contains(.editedCharacters) else { return }
+            pendingStyleRange = pendingStyleRange.map {
+                Coordinator.union($0, withEdit: editedRange, changeInLength: delta)
+            } ?? editedRange
+        }
+
+        /// Grow `pending` (a range edited earlier) to also cover a later edit
+        /// `edit`, shifting its end when the later edit landed before it. Errs
+        /// on the large side; restyling extra lines is harmless.
+        static func union(_ pending: NSRange, withEdit edit: NSRange, changeInLength delta: Int) -> NSRange {
+            var pendingEnd = NSMaxRange(pending)
+            if edit.location <= pendingEnd { pendingEnd = max(edit.location, pendingEnd + delta) }
+            let start = min(pending.location, edit.location)
+            let end = max(pendingEnd, NSMaxRange(edit))
+            return NSRange(location: start, length: end - start)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {

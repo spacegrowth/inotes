@@ -63,11 +63,14 @@ class EditorState: ObservableObject {
         isTodoItem = TextEditorLogic.checkbox(ofLine: line) != nil
         isBulletList = TextEditorLogic.bullet(ofLine: line) != nil
 
-        // Inline markers at the caret.
-        let spans = TextEditorLogic.inlineSpans(in: ns as String)
+        // Inline markers at the caret. Spans never cross lines, so parsing just
+        // the caret's line matches parsing the whole note, at a fraction of the
+        // cost (this runs on every caret move).
         let loc = min(sel.location, max(0, ns.length))
+        let caretLine = ns.paragraphRange(for: NSRange(location: loc, length: 0))
+        let spans = TextEditorLogic.inlineSpans(in: ns.substring(with: caretLine))
         func inSpan(_ kind: TextEditorLogic.InlineKind) -> Bool {
-            spans.contains { $0.kind == kind && NSLocationInRange(loc, $0.fullRange) }
+            spans.contains { $0.kind == kind && NSLocationInRange(loc - caretLine.location, $0.fullRange) }
         }
         isBold = inSpan(.bold)
         isItalic = inSpan(.italic)
@@ -136,7 +139,15 @@ class EditorState: ObservableObject {
         updateFromSelection()
     }
 
+    /// Apply `level`, or go back to body text if the line already has it
+    /// (toolbar H1–H3 and Cmd+1–3).
+    func toggleHeading(_ level: HeadingLevel) {
+        updateFromSelection() // decide from the caret's line now, not the last render
+        applyHeading(currentHeading == level ? .body : level)
+    }
+
     func toggleBulletList() {
+        updateFromSelection() // decide from the caret's line now, not the last render
         let add = !isBulletList
         mutateSelectedLines { line in
             let (indent, rest) = Self.splitIndent(line)
@@ -151,6 +162,7 @@ class EditorState: ObservableObject {
     }
 
     func toggleTodo() {
+        updateFromSelection() // decide from the caret's line now, not the last render
         let add = !isTodoItem
         mutateSelectedLines { line in
             let (indent, rest) = Self.splitIndent(line)

@@ -24,7 +24,15 @@ class KeyablePanel: NSPanel {
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var panel: KeyablePanel!
-    private let store = NotesStore()
+    private let store: NotesStore = {
+        // Unit tests are hosted in the app; keep that launch away from the
+        // user's real notes folder.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else { return NotesStore() }
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("iNotes-test-host")
+        return NotesStore(folder: NotesFolder(url: scratch.appendingPathComponent("notes")),
+                          legacyJSONURL: scratch.appendingPathComponent("notes.json"),
+                          watchForChanges: false)
+    }()
     private var eventMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?

@@ -5,13 +5,13 @@ struct FormattingToolbar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            toolbarIcon(icon: "bold", isActive: editorState.isBold) {
+            toolbarIcon(icon: "bold", help: "Bold (⌘B)", isActive: editorState.isBold) {
                 editorState.toggleBold()
             }
-            toolbarIcon(icon: "italic", isActive: editorState.isItalic) {
+            toolbarIcon(icon: "italic", help: "Italic (⌘I)", isActive: editorState.isItalic) {
                 editorState.toggleItalic()
             }
-            toolbarIcon(icon: "underline", isActive: editorState.isUnderlined) {
+            toolbarIcon(icon: "underline", help: "Underline (⌘U)", isActive: editorState.isUnderlined) {
                 editorState.toggleUnderline()
             }
 
@@ -27,10 +27,10 @@ struct FormattingToolbar: View {
                 .frame(height: 16)
                 .padding(.horizontal, 4)
 
-            toolbarIcon(icon: "list.bullet", isActive: editorState.isBulletList) {
+            toolbarIcon(icon: "list.bullet", help: "Bullet list (⇧⌘8)", isActive: editorState.isBulletList) {
                 editorState.toggleBulletList()
             }
-            toolbarIcon(icon: "checklist", isActive: editorState.isTodoItem) {
+            toolbarIcon(icon: "checklist", help: "Checklist (⇧⌘9)", isActive: editorState.isTodoItem) {
                 editorState.toggleTodo()
             }
 
@@ -38,7 +38,7 @@ struct FormattingToolbar: View {
                 .frame(height: 16)
                 .padding(.horizontal, 4)
 
-            fontSizeButton("A−", enabled: editorState.fontSize > AppSettings.fontSizeRange.lowerBound) {
+            fontSizeButton("A−", help: "Smaller text (⌘−)", enabled: editorState.fontSize > AppSettings.fontSizeRange.lowerBound) {
                 editorState.decreaseFontSize()
             }
             Text("\(Int(editorState.fontSize))")
@@ -46,7 +46,7 @@ struct FormattingToolbar: View {
                 .foregroundColor(.secondary)
                 .frame(minWidth: 14)
                 .help("Editor font size")
-            fontSizeButton("A+", enabled: editorState.fontSize < AppSettings.fontSizeRange.upperBound) {
+            fontSizeButton("A+", help: "Bigger text (⌘=)", enabled: editorState.fontSize < AppSettings.fontSizeRange.upperBound) {
                 editorState.increaseFontSize()
             }
 
@@ -63,7 +63,8 @@ struct FormattingToolbar: View {
         }
     }
 
-    private func toolbarIcon(icon: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+    private func toolbarIcon(icon: String, help: String, isActive: Bool,
+                             action: @escaping () -> Void) -> some View {
         Image(systemName: icon)
             .font(.system(size: 12, weight: isActive ? .bold : .regular))
             .foregroundColor(isActive ? .primary : .secondary)
@@ -71,18 +72,20 @@ struct FormattingToolbar: View {
             .background(isActive ? Color.primary.opacity(0.12) : Color.clear)
             .cornerRadius(4)
             .contentShape(Rectangle())
+            .help(help)
             .onTapGesture {
                 action()
                 refocusEditor()
             }
     }
 
-    private func fontSizeButton(_ label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func fontSizeButton(_ label: String, help: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Text(label)
             .font(.system(size: 11, weight: .semibold))
             .foregroundColor(enabled ? .secondary : Color.secondary.opacity(0.35))
             .frame(width: 20, height: 24)
             .contentShape(Rectangle())
+            .help(help)
             .onTapGesture {
                 guard enabled else { return }
                 action()
@@ -99,10 +102,9 @@ struct FormattingToolbar: View {
             .background(isActive ? Color.primary.opacity(0.12) : Color.clear)
             .cornerRadius(4)
             .contentShape(Rectangle())
+            .help("Heading \(level.rawValue) (⌘\(level.rawValue))")
             .onTapGesture {
-                // Check state at tap time, not render time
-                let currentlyActive = editorState.currentHeading == level
-                editorState.applyHeading(currentlyActive ? .body : level)
+                editorState.toggleHeading(level)
                 refocusEditor()
             }
     }

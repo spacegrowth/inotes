@@ -24,7 +24,7 @@ A minimal macOS menu-bar **markdown scratchpad**. Lives in your menu bar, opens 
   - `**bold**`, `*italic*`, `` `code` `` style inline; the markers hide (unclosed markers stay visible)
   - `- ` bullets render as `•` / `◦` / `▪` by indent depth
   - `- [ ]` / `- [x]` render as clean `☐` / `☑` checkboxes — click to toggle
-- **Notes are portable plain text** — stored as literal markdown in `notes.json`, readable anywhere
+- **Notes are plain `.md` files** — one per tab in `~/.inotes/`; edit them with any tool (an editor, a script, a Claude session) and the open tab updates live
 - **Up to 5 tabs** — add, delete, drag to reorder, pin (📌 floats to front), double-click to rename
 - **Status footer** — live word / character count and an "edited N ago" timestamp
 - **Find** — `Cmd+F` in-note search
@@ -55,9 +55,9 @@ The built app lands in `~/Library/Developer/Xcode/DerivedData/iNotes-*/Build/Pro
 - **`Cmd+Shift+L`** — toggle the panel from anywhere (or click the pencil in the menu bar)
 - **Right-click** the menu-bar icon — change the shortcut, check for updates, or quit
 - **`+`** — new note (up to 5); **double-click** a tab to rename; **drag** to reorder; **right-click** a tab to pin or delete
-- **`Cmd+B` / `Cmd+I`** — wrap the selection in `**` / `*`; **`Cmd+F`** — find
+- **Formatting** — `Cmd+B` / `Cmd+I` / `Cmd+U` bold / italic / underline; `Cmd+1`–`Cmd+3` heading (again for body); `Cmd+Shift+8` bullets; `Cmd+Shift+9` checklist; `Cmd+=` / `Cmd+−` text size; **`Cmd+F`** — find
 - Type `- [ ] ` for a checkbox, then click it to toggle
-- Notes save automatically to `~/Library/Application Support/iNotes/notes.json`
+- Notes save automatically to `~/.inotes/<tab title>.md` (tab order, pins, and titles live in `~/.inotes/index.json`). Drop a new `.md` file in to add a tab. On first launch after upgrading, the old `~/Library/Application Support/iNotes/notes.json` is migrated there and kept as `notes.json.migrated`.
 
 ## Tech
 
