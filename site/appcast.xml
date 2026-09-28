@@ -3,12 +3,12 @@
     <channel>
         <title>iNotes</title>
         <item>
-            <title>1.9</title>
-            <pubDate>Sat, 18 Jul 2026 17:16:05 -0700</pubDate>
-            <sparkle:version>1.9</sparkle:version>
-            <sparkle:shortVersionString>1.9</sparkle:shortVersionString>
+            <title>1.10</title>
+            <pubDate>Mon, 28 Sep 2026 00:43:58 -0700</pubDate>
+            <sparkle:version>1.10</sparkle:version>
+            <sparkle:shortVersionString>1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/spacegrowth/inotes/releases/download/v1.9/iNotes-1.9.app.zip" length="1548156" type="application/octet-stream" sparkle:edSignature="Ahbi30TNp+6B3i8w1v2nxf+sXr+JxFmDipHBHSfdBUywFTDpwHDciGe6N8hs1yK/nhxjLW0uyOZSKP1jUhjyCw=="/>
+            <enclosure url="https://github.com/spacegrowth/inotes/releases/download/v1.10/iNotes-1.10.app.zip" length="1672015" type="application/octet-stream" sparkle:edSignature="zcaaJLW9AfCH4AtEA3vJrtribjNeMvlElkXZ6EMJDwKLkJCzbWv25TzbsPlD1/XaK1BzQMOEcysyBWP2iSh9Bw=="/>
         </item>
     </channel>
 </rss>
